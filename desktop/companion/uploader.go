@@ -88,6 +88,15 @@ func (c *Client) Upload(ctx context.Context, b *Bundle) (Receipt, error) {
 	req.Header.Set("X-WoWCensus-Lua-Bytes", strconv.FormatInt(m.Bytes, 10))
 	req.Header.Set("X-WoWCensus-Edition", m.Edition)
 	req.Header.Set("X-WoWCensus-App-Version", m.AppVersion)
+	if m.Kind != "" {
+		req.Header.Set("X-WoWCensus-Kind", m.Kind)
+	}
+	if m.Mode != "" {
+		req.Header.Set("X-WoWCensus-Mode", m.Mode)
+	}
+	if m.Addon != "" {
+		req.Header.Set("X-WoWCensus-Addon", m.Addon)
+	}
 	if c.ClientID != "" {
 		req.Header.Set("X-WoWCensus-Client-Id", c.ClientID)
 	}
@@ -102,6 +111,7 @@ func (c *Client) Upload(ctx context.Context, b *Bundle) (Receipt, error) {
 	return Receipt{
 		SourceID: m.SourceID, SHA256: m.SHA256, Status: out.Status, ReceiptID: out.ReceiptID,
 		Duplicate: out.Duplicate, Bytes: int64(len(b.Zip)), At: time.Now().UTC(),
+		UploadSHA: m.SHA256, Mode: m.Mode,
 	}, nil
 }
 

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -193,6 +194,46 @@ type fakeServer struct {
 	mu                         sync.Mutex
 	token                      string
 	failPut                    atomic.Bool
+	modes                      []string
+	kinds                      []string
+	bodies                     [][]byte
+}
+
+func (fs *fakeServer) uploads() ([]string, []string, [][]byte) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	return append([]string{}, fs.modes...), append([]string{}, fs.kinds...), append([][]byte{}, fs.bodies...)
+}
+
+func bundleLua(t *testing.T, zipped []byte) (Manifest, string) {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(zipped), int64(len(zipped)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m Manifest
+	var lua string
+	for _, f := range zr.File {
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		rc.Close()
+		if f.Name == "manifest.json" {
+			_ = json.Unmarshal(b, &m)
+		} else {
+			lua = string(b)
+		}
+	}
+	return m, lua
+}
+
+func censusLua(samples int) string {
+	var b strings.Builder
+	b.WriteString("WoWCensusDB = {\n[\"realms\"] = {\n[\"us:retail:Test-Horde\"] = {\n[\"population\"] = {\n[\"samples\"] = {\n")
+	for i := 1; i <= samples; i++ {
+		b.WriteString("{\n[\"t\"] = " + strconv.Itoa(1790000000+i) + ",\n[\"count\"] = " + strconv.Itoa(i) + ",\n},\n")
+	}
+	b.WriteString("},\n},\n},\n},\n}\n")
+	return b.String()
 }
 
 func (fs *fakeServer) currentToken() string {
@@ -243,6 +284,11 @@ func (fs *fakeServer) handler(t *testing.T) http.Handler {
 			t.Errorf("bad upload: method %s, %d bytes, headers %v", r.Method, len(body), r.Header)
 		}
 		fs.completes.Add(1)
+		fs.mu.Lock()
+		fs.modes = append(fs.modes, r.Header.Get("X-WoWCensus-Mode"))
+		fs.kinds = append(fs.kinds, r.Header.Get("X-WoWCensus-Kind"))
+		fs.bodies = append(fs.bodies, body)
+		fs.mu.Unlock()
 		w.WriteHeader(201)
 		_ = json.NewEncoder(w).Encode(uploadResponse{Status: "queued", ReceiptID: "00000000-0000-0000-0000-000000000001"})
 	})
@@ -251,7 +297,7 @@ func (fs *fakeServer) handler(t *testing.T) http.Handler {
 
 func TestEngineUploadsOnceThenOnChange(t *testing.T) {
 	root := t.TempDir()
-	p := makeInstall(t, root, "_retail_", "A", "WoWCensusDB = { v = 1 }")
+	p := makeInstall(t, root, "_retail_", "A", censusLua(1))
 	fs := &fakeServer{token: "test-token"}
 	var srv *httptest.Server
 	srv = httptest.NewServer(fs.handler(t))
@@ -291,27 +337,47 @@ func TestEngineUploadsOnceThenOnChange(t *testing.T) {
 		t.Fatalf("dedup failed: %d uploads", fs.puts.Load())
 	}
 
-	writeOld(t, p, "WoWCensusDB = { v = 2 }")
+	writeOld(t, p, censusLua(2))
 	e2.RunOnce(ctx, false, false)
 	if fs.completes.Load() != 2 {
 		t.Fatalf("change not uploaded: %d", fs.completes.Load())
+	}
+	modes, kinds, bodies := fs.uploads()
+	if modes[0] != ModeFull || modes[1] != ModeSession || kinds[1] != KindCensus {
+		t.Fatalf("want a full upload then a session, got modes %v kinds %v", modes, kinds)
+	}
+	m, lua := bundleLua(t, bodies[1])
+	if m.Rows != 1 || !strings.Contains(lua, "1790000002") || strings.Contains(lua, "1790000001") {
+		t.Fatalf("session upload should hold only the new sample: rows %d\n%s", m.Rows, lua)
+	}
+	if m.FileSHA256 == m.SHA256 || m.FileSHA256 == "" {
+		t.Fatalf("manifest should name the save it came from: %+v", m)
+	}
+
+	writeOld(t, p, censusLua(2)+"\n")
+	e2.RunOnce(ctx, false, false)
+	if fs.completes.Load() != 2 {
+		t.Fatalf("a save with nothing new was uploaded: %d", fs.completes.Load())
+	}
+	if st := e2.Status(); len(st.Files) != 1 || !st.Files[0].Uploaded {
+		t.Fatalf("a save with nothing new should count as uploaded: %+v", st.Files)
 	}
 	if fs.registers.Load() != 1 {
 		t.Fatalf("registered again after restart: %d", fs.registers.Load())
 	}
 
 	fs.rotateToken("server-forgot-the-device")
-	writeOld(t, p, "WoWCensusDB = { v = 3 }")
+	writeOld(t, p, censusLua(3))
 	e2.RunOnce(ctx, false, false)
 	e2.RunOnce(ctx, true, false)
 	if fs.registers.Load() != 2 || fs.completes.Load() != 3 {
 		t.Fatalf("did not re-register after 401: registers %d, uploads %d", fs.registers.Load(), fs.completes.Load())
 	}
-	if bs, _ := ListBackups(e.Config().ResolvedBackupDir(appDir)); len(bs) != 3 {
-		t.Fatalf("want 3 backups, got %d", len(bs))
+	if bs, _ := ListBackups(e.Config().ResolvedBackupDir(appDir)); len(bs) != 4 {
+		t.Fatalf("want 4 backups, got %d", len(bs))
 	}
 	rep := e2.Report()
-	if rep.BackupCount != 3 || len(rep.Files) != 1 {
+	if rep.BackupCount != 4 || len(rep.Files) != 1 {
 		t.Fatalf("report %+v", rep)
 	}
 }

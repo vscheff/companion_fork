@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,8 @@ type FileStatus struct {
 	LastError     string     `json:"lastError,omitempty"`
 	LastCleanup   *Cleanup   `json:"lastCleanup,omitempty"`
 	CleanupWait   string     `json:"cleanupWait,omitempty"`
+	Addon         string     `json:"addon,omitempty"`
+	Character     string     `json:"character,omitempty"`
 }
 
 type Status struct {
@@ -38,6 +41,7 @@ type Status struct {
 	LastScan   time.Time    `json:"lastScan"`
 	AutoUpload bool         `json:"autoUpload"`
 	Files      []FileStatus `json:"files"`
+	AddonFiles []FileStatus `json:"addonFiles"`
 	Addon      AddonStatus  `json:"addon"`
 	Update     UpdateStatus `json:"update"`
 	Log        []LogEntry   `json:"log"`
@@ -90,7 +94,11 @@ type Engine struct {
 	addonLatest   AddonRelease
 	addonLatestAt time.Time
 	addonErr      string
+
+	uploadPause time.Time
 }
+
+var errUploadPaused = errors.New("waiting for the server's upload limit")
 
 const maxLog = 200
 
@@ -119,6 +127,7 @@ func NewEngine(appDir string) (*Engine, error) {
 		cleanChecked:     map[string]cleanCheck{},
 	}
 	e.status.Files = []FileStatus{}
+	e.status.AddonFiles = []FileStatus{}
 	e.status.AutoUpload = cfg.AutoUpload
 	e.status.Addon.Installs = []AddonInstall{}
 	e.status.Update.Current = AppVersion
@@ -142,6 +151,10 @@ func (e *Engine) Config() Config {
 	defer e.mu.Unlock()
 	c := e.cfg
 	c.WoWRoots = append([]string{}, e.cfg.WoWRoots...)
+	c.ShareAddons = make(map[string]bool, len(e.cfg.ShareAddons))
+	for k, v := range e.cfg.ShareAddons {
+		c.ShareAddons[k] = v
+	}
 	return c
 }
 
@@ -222,6 +235,7 @@ func (e *Engine) Status() Status {
 	defer e.mu.Unlock()
 	s := e.status
 	s.Files = append([]FileStatus{}, e.status.Files...)
+	s.AddonFiles = append([]FileStatus{}, e.status.AddonFiles...)
 	s.Log = append([]LogEntry{}, e.status.Log...)
 	return s
 }
@@ -318,8 +332,10 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 		wantUpload := (cfg.AutoUpload || forceUpload) && cfg.ServerURL != "" &&
 			(changed || !hasReceipt) && (forceUpload || !inBackoff)
 		wantBackup := forceBackup || (cfg.AutoBackup && changed)
+		_, hasCursor := e.state.Cursor(fs.SourceID)
+		needCursor := hasReceipt && !hasCursor
 
-		if changed || wantUpload || wantBackup {
+		if changed || wantUpload || wantBackup || needCursor {
 			snap, err := TakeSnapshot(f, now)
 			switch {
 			case errors.Is(err, ErrUnstable):
@@ -351,9 +367,14 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 				}
 			}
 			_, hasReceipt = e.state.Receipt(fs.SourceID, snap.SHA256)
+			if _, ok := e.state.Cursor(fs.SourceID); !ok && hasReceipt {
+				if marks, err := CensusMarks(snap.Data); err == nil {
+					_ = e.state.SetCursor(fs.SourceID, marks)
+				}
+			}
 			fail, inBackoff = e.state.Backoff(fs.SourceID, snap.SHA256, now)
 			if wantUpload && !hasReceipt && (forceUpload || !inBackoff) {
-				e.upload(ctx, cfg, snap, fs.SourceID)
+				e.uploadCensus(ctx, cfg, snap, fs.SourceID)
 			} else if forceUpload && hasReceipt {
 				e.logf("info", "%s / %s already uploaded (same content)", f.Edition, f.Account)
 			}
@@ -387,13 +408,16 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 		e.logf("warn", "No WoWCensus.lua found to back up")
 	}
 
+	addonFiles := e.reconcileAddons(ctx, cfg, forceUpload)
+
 	if cfg.AutoUpload && cfg.DeviceToken != "" {
-		e.refreshReceipts(ctx, cfg, statuses)
+		e.refreshReceipts(ctx, cfg, statuses, addonFiles)
 	}
 	addon := e.addonStatus(cfg)
 
 	e.mu.Lock()
 	e.status.Files = statuses
+	e.status.AddonFiles = addonFiles
 	e.status.Addon = addon
 	e.status.LastScan = e.now().UTC()
 	e.status.AutoUpload = cfg.AutoUpload
@@ -401,37 +425,210 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 	e.notify()
 }
 
-func (e *Engine) upload(ctx context.Context, cfg Config, snap *Snapshot, sourceID string) {
-	m := NewManifest(snap, sourceID)
-	b, err := BuildBundle(snap, m)
-	if err != nil {
-		e.logf("error", "Bundle failed: %v", err)
-		return
+func (e *Engine) send(ctx context.Context, cfg Config, m Manifest, data []byte, label string) (Receipt, error) {
+	e.mu.Lock()
+	paused := e.now().Before(e.uploadPause)
+	e.mu.Unlock()
+	if paused {
+		return Receipt{}, errUploadPaused
 	}
-	label := snap.File.Edition + " / " + snap.File.Account
-	e.logf("info", "Uploading %s (%s zipped)", label, humanBytes(int64(len(b.Zip))))
+	b, err := BuildBundleData(m, data)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("bundle failed: %w", err)
+	}
+	what := "the whole file"
+	if m.Mode == ModeSession {
+		what = fmt.Sprintf("%d new rows", m.Rows)
+	}
+	e.logf("info", "Uploading %s: %s (%s zipped)", label, what, humanBytes(int64(len(b.Zip))))
 	token, err := e.ensureDevice(ctx)
-	if err == nil {
-		var r Receipt
-		c := e.newClient(cfg.ServerURL, token)
-		c.ClientID = e.state.ClientID()
-		r, err = c.Upload(ctx, b)
-		if err == nil {
-			_ = e.state.PutReceipt(r)
-			if r.Duplicate {
-				e.logf("info", "%s: server already has this version", label)
-			} else {
-				e.logf("info", "%s uploaded. It will appear on wowcensus.io after the next import.", label)
-			}
-			return
-		}
+	if err != nil {
+		return Receipt{}, err
+	}
+	c := e.newClient(cfg.ServerURL, token)
+	c.ClientID = e.state.ClientID()
+	r, err := c.Upload(ctx, b)
+	if err != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
 			_ = e.setDevice("", "")
 		}
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusTooManyRequests {
+			wait := max(apiErr.RetryAfter, time.Minute)
+			e.mu.Lock()
+			e.uploadPause = e.now().Add(wait)
+			e.mu.Unlock()
+			e.logf("info", "The server asked to slow down; the remaining uploads continue in about %d minute(s).", int(wait.Round(time.Minute)/time.Minute))
+			return Receipt{}, errUploadPaused
+		}
+		return Receipt{}, err
 	}
-	_ = e.state.RecordFailure(sourceID, snap.SHA256, err, e.now())
+	return r, nil
+}
+
+func (e *Engine) uploadFailed(sourceID, fileSHA, label string, err error) {
+	if errors.Is(err, errUploadPaused) {
+		return
+	}
+	_ = e.state.RecordFailure(sourceID, fileSHA, err, e.now())
 	e.logf("error", "Upload of %s failed: %v", label, err)
+}
+
+func (e *Engine) accept(r Receipt, fileSHA, label string) {
+	r.SHA256 = fileSHA
+	_ = e.state.PutReceipt(r)
+	if r.Duplicate {
+		e.logf("info", "%s: server already has this version", label)
+	} else {
+		e.logf("info", "%s uploaded. It will appear on wowcensus.io after the next import.", label)
+	}
+}
+
+func (e *Engine) coverWithLatest(sourceID, fileSHA string) bool {
+	prev, ok := e.state.LatestReceipt(sourceID)
+	if !ok {
+		return false
+	}
+	prev.SHA256, prev.At, prev.Duplicate = fileSHA, e.now().UTC(), true
+	_ = e.state.PutReceipt(prev)
+	return true
+}
+
+func (e *Engine) uploadCensus(ctx context.Context, cfg Config, snap *Snapshot, sourceID string) {
+	label := snap.File.Edition + " / " + snap.File.Account
+	m := NewManifest(snap, sourceID)
+	data := snap.Data
+	cur, hasCursor := e.state.Cursor(sourceID)
+	var next Cursor
+	if hasCursor {
+		d, err := BuildCensusDelta(snap.Data, cur)
+		switch {
+		case err != nil:
+			e.logf("warn", "%s: couldn't pick out the new data (%v); sending the whole file", label, err)
+			next, _ = CensusMarks(snap.Data)
+		case d.Lua == nil:
+			_ = e.state.SetCursor(sourceID, d.Next)
+			if e.coverWithLatest(sourceID, snap.SHA256) {
+				e.logf("info", "%s: nothing new since the last upload", label)
+				return
+			}
+			next = d.Next
+		default:
+			m.Mode, m.Rows, next = ModeSession, d.Rows, d.Next
+			data = d.Lua
+			m.SetData(data)
+		}
+	} else {
+		next, _ = CensusMarks(snap.Data)
+	}
+	r, err := e.send(ctx, cfg, m, data, label)
+	if err != nil {
+		e.uploadFailed(sourceID, snap.SHA256, label, err)
+		return
+	}
+	e.accept(r, snap.SHA256, label)
+	if next.Buckets != nil {
+		_ = e.state.SetCursor(sourceID, next)
+	}
+}
+
+func (e *Engine) accountID(f SavedVarFile) string {
+	return e.state.SourceID(filepath.Join(f.Root, "WTF", "Account", f.Account))
+}
+
+func (e *Engine) reconcileAddons(ctx context.Context, cfg Config, forceUpload bool) []FileStatus {
+	statuses := []FileStatus{}
+	if !cfg.SharesAddons() {
+		return statuses
+	}
+	files := DiscoverAddonFiles(e.discoverEditions(cfg.WoWRoots), cfg.ShareAddons)
+	now := e.now()
+	for _, f := range files {
+		if ctx.Err() != nil {
+			break
+		}
+		fs := FileStatus{SavedVarFile: f.SavedVarFile, SourceID: e.state.SourceID(f.Path), Addon: f.Addon, Character: f.Character}
+		sig, err := statSig(f.Path)
+		if err != nil {
+			fs.LastError = err.Error()
+			statuses = append(statuses, fs)
+			continue
+		}
+		fs.Bytes, fs.ModTime = sig.Size, sig.ModTime
+		seen, known := e.state.SeenSig(f.Path)
+		changed := !known || !seen.Sig.Equal(sig)
+		if !changed {
+			fs.SHA256 = seen.SHA256
+		}
+		_, hasReceipt := e.state.Receipt(fs.SourceID, fs.SHA256)
+		_, inBackoff := e.state.Backoff(fs.SourceID, fs.SHA256, now)
+		want := (cfg.AutoUpload || forceUpload) && cfg.ServerURL != "" && (changed || !hasReceipt) && (forceUpload || !inBackoff)
+		if want {
+			snap, err := TakeSnapshot(f.SavedVarFile, now)
+			switch {
+			case errors.Is(err, ErrUnstable):
+				fs.LastError = "waiting for the file to settle"
+			case err != nil:
+				fs.LastError = err.Error()
+			default:
+				fs.SHA256 = snap.SHA256
+				if changed {
+					_ = e.state.SetSeen(f.Path, snap.Sig, snap.SHA256)
+				}
+				_, hasReceipt = e.state.Receipt(fs.SourceID, snap.SHA256)
+				_, inBackoff = e.state.Backoff(fs.SourceID, snap.SHA256, now)
+				if !hasReceipt && (forceUpload || !inBackoff) {
+					e.uploadAddon(ctx, cfg, f, snap, fs.SourceID)
+				}
+			}
+		}
+		if r, ok := e.state.Receipt(fs.SourceID, fs.SHA256); ok {
+			fs.Uploaded = true
+			fs.LastReceipt = &r
+		} else if r, ok := e.state.LatestReceipt(fs.SourceID); ok {
+			fs.LastReceipt = &r
+		}
+		if fail, inBackoff := e.state.Backoff(fs.SourceID, fs.SHA256, e.now()); inBackoff {
+			t := fail.NextTry
+			fs.NextRetry = &t
+			fs.LastError = fail.LastErr
+		}
+		statuses = append(statuses, fs)
+	}
+	return statuses
+}
+
+func (e *Engine) uploadAddon(ctx context.Context, cfg Config, f AddonFile, snap *Snapshot, sourceID string) {
+	label := f.Label()
+	cur, hasCursor := e.state.Cursor(sourceID)
+	d, err := BuildAddonUpload(f, snap.Data, cur)
+	if err != nil {
+		_ = e.state.RecordFailure(sourceID, snap.SHA256, err, e.now())
+		e.logf("error", "%s: %v", label, err)
+		return
+	}
+	if d.Lua == nil {
+		_ = e.state.SetCursor(sourceID, d.Next)
+		if !e.coverWithLatest(sourceID, snap.SHA256) {
+			_ = e.state.PutReceipt(Receipt{SourceID: sourceID, SHA256: snap.SHA256, Status: "empty", At: e.now().UTC()})
+		}
+		return
+	}
+	a, _ := extraAddon(f.Addon)
+	m := NewManifest(snap, sourceID)
+	m.Kind, m.Addon, m.FileName, m.Rows = KindAddon, f.Addon, a.File, d.Rows
+	m.Realm, m.Character, m.AccountID = f.Realm, f.Character, e.accountID(f.SavedVarFile)
+	if hasCursor {
+		m.Mode = ModeSession
+	}
+	m.SetData(d.Lua)
+	r, err := e.send(ctx, cfg, m, d.Lua, label)
+	if err != nil {
+		e.uploadFailed(sourceID, snap.SHA256, label, err)
+		return
+	}
+	e.accept(r, snap.SHA256, label)
+	_ = e.state.SetCursor(sourceID, d.Next)
 }
 
 func (e *Engine) Report() MaintenanceReport {
@@ -519,23 +716,35 @@ func humanBytes(n int64) string {
 
 const receiptCheckEvery = 10 * time.Minute
 
-func (e *Engine) refreshReceipts(ctx context.Context, cfg Config, files []FileStatus) {
+const receiptChecksPerScan = 5
+
+func (e *Engine) refreshReceipts(ctx context.Context, cfg Config, groups ...[]FileStatus) {
 	client := e.newClient(cfg.ServerURL, cfg.DeviceToken)
-	for i := range files {
-		r := files[i].LastReceipt
-		if r == nil || r.ReceiptID == "" || (r.Status != "queued" && r.Status != "stored") || e.now().Sub(r.CheckedAt) < receiptCheckEvery {
-			continue
-		}
-		status, err := client.ReceiptStatus(ctx, r.ReceiptID)
+	checks := e.state.ReceiptsToCheck(e.now(), receiptCheckEvery, receiptChecksPerScan)
+	updated := map[string]string{}
+	for _, c := range checks {
+		status, err := client.ReceiptStatus(ctx, c.ReceiptID)
 		if err != nil {
 			continue
 		}
-		updated := *r
-		updated.Status, updated.CheckedAt = status, e.now().UTC()
-		_ = e.state.PutReceipt(updated)
-		files[i].LastReceipt = &updated
-		if status == "imported" {
-			e.logf("info", "%s / %s is now on wowcensus.io", files[i].Edition, files[i].Account)
+		_ = e.state.SetReceiptStatus(c.ReceiptID, status, e.now().UTC())
+		updated[c.ReceiptID] = status
+	}
+	if len(updated) == 0 {
+		return
+	}
+	for _, files := range groups {
+		for i := range files {
+			r := files[i].LastReceipt
+			if r == nil || updated[r.ReceiptID] == "" {
+				continue
+			}
+			fresh := *r
+			fresh.Status, fresh.CheckedAt = updated[r.ReceiptID], e.now().UTC()
+			files[i].LastReceipt = &fresh
+			if fresh.Status == "imported" && files[i].Addon == "" && e.state.PendingReceipts(files[i].SourceID) == 0 {
+				e.logf("info", "%s / %s is now on wowcensus.io", files[i].Edition, files[i].Account)
+			}
 		}
 	}
 }

@@ -22,13 +22,15 @@ You don't need an account, a password or a token.
 ## What gets shared
 
 **Shared:**
-- what the WoWCensus add-on recorded: character names, realms, races, classes and levels it saw through `/who`.
+- what the WoWCensus add-on recorded: character names, realms, races, classes and levels it saw through `/who`. The first upload is the whole save; after that, each `/reload` or logout sends only what is new since the last upload.
+- only if you tick them under **Other add-ons** in Settings: auction prices and your own sales from Auctionator, Journalator and TradeSkillMaster, and your Dungeon Journal progress. Other players' names, mail and chat text are removed on your computer before anything is sent.
 
 **Never shared:**
 - your Battle.net account or login;
 - your WoW account folder name;
 - file paths on your computer;
-- anything from other add-ons.
+- other players' names from your other add-ons;
+- data from any other add-on you haven't ticked.
 
 Uploads are off until you turn them on, and you can turn them off at any time in Settings.
 

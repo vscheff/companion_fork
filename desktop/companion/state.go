@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -21,7 +22,11 @@ type Receipt struct {
 	CheckedAt time.Time `json:"checkedAt,omitempty"`
 	Bytes     int64     `json:"bytes"`
 	At        time.Time `json:"at"`
+	UploadSHA string    `json:"uploadSha,omitempty"`
+	Mode      string    `json:"mode,omitempty"`
 }
+
+func receiptPending(status string) bool { return status == "queued" || status == "stored" }
 
 type Failure struct {
 	Attempts int       `json:"attempts"`
@@ -40,6 +45,7 @@ type State struct {
 	Seen        map[string]seenFile `json:"seen"`
 	Failures    map[string]Failure  `json:"failures"`
 	Cleanups    map[string]Cleanup  `json:"cleanups,omitempty"`
+	Cursors     map[string]Cursor   `json:"cursors,omitempty"`
 }
 
 type Cleanup struct {
@@ -87,6 +93,9 @@ func LoadState(appDir string) (*State, error) {
 	}
 	if s.Cleanups == nil {
 		s.Cleanups = map[string]Cleanup{}
+	}
+	if s.Cursors == nil {
+		s.Cursors = map[string]Cursor{}
 	}
 	return s, s.Save()
 }
@@ -216,6 +225,78 @@ func (s *State) LastCleanup(sourceID string) (Cleanup, bool) {
 func (s *State) PutCleanup(sourceID string, c Cleanup) error {
 	s.mu.Lock()
 	s.Cleanups[sourceID] = c
+	s.mu.Unlock()
+	return s.Save()
+}
+
+func (s *State) Cursor(sourceID string) (Cursor, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.Cursors[sourceID]
+	return c.clone(), ok
+}
+
+func (s *State) SetCursor(sourceID string, c Cursor) error {
+	s.mu.Lock()
+	s.Cursors[sourceID] = c.clone()
+	s.mu.Unlock()
+	return s.Save()
+}
+
+func (s *State) PendingReceipts(sourceID string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := map[string]bool{}
+	for _, r := range s.Receipts {
+		if r.SourceID == sourceID && r.ReceiptID != "" && receiptPending(r.Status) {
+			ids[r.ReceiptID] = true
+		}
+	}
+	return len(ids)
+}
+
+type receiptCheck struct {
+	ReceiptID string
+	SourceID  string
+	CheckedAt time.Time
+}
+
+func (s *State) ReceiptsToCheck(now time.Time, every time.Duration, limit int) []receiptCheck {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	byID := map[string]receiptCheck{}
+	for _, r := range s.Receipts {
+		if r.ReceiptID == "" || !receiptPending(r.Status) || now.Sub(r.CheckedAt) < every {
+			continue
+		}
+		if c, ok := byID[r.ReceiptID]; !ok || r.CheckedAt.Before(c.CheckedAt) {
+			byID[r.ReceiptID] = receiptCheck{ReceiptID: r.ReceiptID, SourceID: r.SourceID, CheckedAt: r.CheckedAt}
+		}
+	}
+	out := make([]receiptCheck, 0, len(byID))
+	for _, c := range byID {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CheckedAt.Equal(out[j].CheckedAt) {
+			return out[i].CheckedAt.Before(out[j].CheckedAt)
+		}
+		return out[i].ReceiptID < out[j].ReceiptID
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+func (s *State) SetReceiptStatus(receiptID, status string, checked time.Time) error {
+	s.mu.Lock()
+	for k, r := range s.Receipts {
+		if r.ReceiptID == receiptID {
+			r.Status, r.CheckedAt = status, checked
+			s.Receipts[k] = r
+		}
+	}
 	s.mu.Unlock()
 	return s.Save()
 }

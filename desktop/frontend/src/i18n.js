@@ -35,6 +35,7 @@ const translations = {
       looking: "Looking for your WoWCensus saves…",
       noFiles: "No WoWCensus saves found yet.",
       emptyHint: "Install the add-on above, log in to a character, and type /reload once. Your save will show up here.",
+      otherTitle: "Other add-ons",
     },
     table: {
       gameVersion: "Game version",
@@ -42,6 +43,7 @@ const translations = {
       size: "Size",
       lastSaved: "Last saved",
       upload: "Upload",
+      addon: "Add-on",
     },
     status: {
       watching: "Watching for new saves",
@@ -60,6 +62,7 @@ const translations = {
       retrying: "Retrying {when}",
       uploadsOff: "Uploads off",
       waiting: "Waiting…",
+      nothing: "Nothing to share",
     },
     update: {
       installing: "Installing version {version}… the app will restart by itself.",
@@ -88,6 +91,8 @@ const translations = {
       saved: "Saved.",
       autoClean: "Clean up WoWCensus saves automatically",
       autoCleanHint: "Removes old data wowcensus.io already has. Only runs while WoW is closed, after a backup.",
+      otherAddons: "Other add-ons",
+      otherAddonsHint: "Also share market and dungeon data from these add-ons. Other players' names, mail and chat text are removed on this computer before anything is sent. Only the ones you tick are shared.",
     },
     cleanup: {
       done: "Cleaned {before} → {after} on {when}",
@@ -144,6 +149,7 @@ const translations = {
       looking: "WoWCensus 저장 파일 찾는 중…",
       noFiles: "아직 WoWCensus 저장 파일이 없습니다.",
       emptyHint: "위에서 애드온을 설치하고 캐릭터에 접속한 후 /reload를 한 번 실행하세요. 저장 파일이 여기에 표시됩니다.",
+      otherTitle: "다른 애드온",
     },
     table: {
       gameVersion: "게임 버전",
@@ -151,6 +157,7 @@ const translations = {
       size: "크기",
       lastSaved: "마지막 저장",
       upload: "업로드",
+      addon: "애드온",
     },
     status: {
       watching: "새 저장 파일 감시 중",
@@ -169,6 +176,7 @@ const translations = {
       retrying: "{when} 재시도 예정",
       uploadsOff: "업로드 꺼짐",
       waiting: "대기 중…",
+      nothing: "공유할 내용 없음",
     },
     update: {
       installing: "{version} 버전 설치 중… 앱이 자동으로 다시 시작됩니다.",
@@ -197,6 +205,8 @@ const translations = {
       saved: "저장되었습니다.",
       autoClean: "WoWCensus 저장 파일 자동 정리",
       autoCleanHint: "wowcensus.io에 이미 있는 오래된 데이터를 삭제합니다. WoW가 종료된 상태에서 백업 후에만 실행됩니다.",
+      otherAddons: "다른 애드온",
+      otherAddonsHint: "이 애드온들의 경매장·던전 데이터도 공유합니다. 다른 플레이어의 이름, 우편과 채팅 내용은 전송 전에 이 컴퓨터에서 삭제됩니다. 선택한 애드온만 공유됩니다.",
     },
     cleanup: {
       done: "{when}에 {before} → {after}(으)로 정리됨",
@@ -253,6 +263,7 @@ const translations = {
       looking: "Buscando tus guardados de WoWCensus…",
       noFiles: "Aún no se han encontrado guardados de WoWCensus.",
       emptyHint: "Instala el add-on arriba, inicia sesión con un personaje y escribe /reload una vez. Tu guardado aparecerá aquí.",
+      otherTitle: "Otros addons",
     },
     table: {
       gameVersion: "Versión del juego",
@@ -260,6 +271,7 @@ const translations = {
       size: "Tamaño",
       lastSaved: "Último guardado",
       upload: "Subida",
+      addon: "Addon",
     },
     status: {
       watching: "Buscando nuevos guardados",
@@ -278,6 +290,7 @@ const translations = {
       retrying: "Reintentando {when}",
       uploadsOff: "Subidas desactivadas",
       waiting: "Esperando…",
+      nothing: "Nada que compartir",
     },
     update: {
       installing: "Instalando la versión {version}… la aplicación se reiniciará automáticamente.",
@@ -306,6 +319,8 @@ const translations = {
       saved: "Guardado.",
       autoClean: "Limpiar automáticamente los guardados de WoWCensus",
       autoCleanHint: "Elimina datos antiguos que wowcensus.io ya tiene. Solo con WoW cerrado y tras una copia de seguridad.",
+      otherAddons: "Otros addons",
+      otherAddonsHint: "Comparte también los datos de mercado y de mazmorras de estos addons. Los nombres de otros jugadores y el texto del correo y del chat se eliminan en este equipo antes de enviar nada. Solo se comparten los que marques.",
     },
     cleanup: {
       done: "Reducido de {before} a {after} el {when}",
@@ -362,6 +377,7 @@ const translations = {
       looking: "Suche nach WoWCensus-Speicherständen…",
       noFiles: "Noch keine WoWCensus-Speicherstände gefunden.",
       emptyHint: "Installiere das Add-on oben, logge dich mit einem Charakter ein und tippe einmal /reload ein. Dein Speicherstand erscheint hier.",
+      otherTitle: "Andere Add-ons",
     },
     table: {
       gameVersion: "Spielversion",
@@ -369,6 +385,7 @@ const translations = {
       size: "Größe",
       lastSaved: "Zuletzt gespeichert",
       upload: "Upload",
+      addon: "Add-on",
     },
     status: {
       watching: "Wartet auf neue Speicherstände",
@@ -387,6 +404,7 @@ const translations = {
       retrying: "Wiederholung am {when}",
       uploadsOff: "Uploads aus",
       waiting: "Warten…",
+      nothing: "Nichts zu teilen",
     },
     update: {
       installing: "Version {version} wird installiert… Die App startet automatisch neu.",
@@ -415,6 +433,8 @@ const translations = {
       saved: "Gespeichert.",
       autoClean: "WoWCensus-Speicherdateien automatisch aufräumen",
       autoCleanHint: "Entfernt alte Daten, die wowcensus.io schon hat. Nur bei geschlossenem WoW und nach einer Sicherung.",
+      otherAddons: "Andere Add-ons",
+      otherAddonsHint: "Teilt auch Markt- und Dungeondaten dieser Add-ons. Namen anderer Spieler sowie Post- und Chattexte werden vor dem Senden auf diesem Computer entfernt. Geteilt wird nur, was du ankreuzt.",
     },
     cleanup: {
       done: "Am {when} von {before} auf {after} verkleinert",
@@ -471,6 +491,7 @@ const translations = {
       looking: "Recherche de vos sauvegardes WoWCensus…",
       noFiles: "Aucune sauvegarde WoWCensus trouvée pour le moment.",
       emptyHint: "Installez l'add-on ci-dessus, connectez-vous avec un personnage et tapez /reload une fois. Votre sauvegarde apparaîtra ici.",
+      otherTitle: "Autres addons",
     },
     table: {
       gameVersion: "Version du jeu",
@@ -478,6 +499,7 @@ const translations = {
       size: "Taille",
       lastSaved: "Dernière sauvegarde",
       upload: "Téléversement",
+      addon: "Addon",
     },
     status: {
       watching: "Surveillance des nouvelles sauvegardes",
@@ -496,6 +518,7 @@ const translations = {
       retrying: "Nouvel essai le {when}",
       uploadsOff: "Téléversements désactivés",
       waiting: "En attente…",
+      nothing: "Rien à partager",
     },
     update: {
       installing: "Installation de la version {version}… l'application va redémarrer automatiquement.",
@@ -524,6 +547,8 @@ const translations = {
       saved: "Enregistré.",
       autoClean: "Nettoyer automatiquement les sauvegardes WoWCensus",
       autoCleanHint: "Supprime les anciennes données que wowcensus.io possède déjà. Seulement quand WoW est fermé, après une copie de sauvegarde.",
+      otherAddons: "Autres addons",
+      otherAddonsHint: "Partage aussi les données de marché et de donjons de ces addons. Les noms des autres joueurs et le texte du courrier et du chat sont retirés sur cet ordinateur avant tout envoi. Seuls les addons cochés sont partagés.",
     },
     cleanup: {
       done: "Réduit de {before} à {after} le {when}",
@@ -580,6 +605,7 @@ const translations = {
       looking: "Ricerca dei tuoi salvataggi WoWCensus in corso…",
       noFiles: "Nessun salvataggio di WoWCensus ancora trovato.",
       emptyHint: "Installa l'add-on sopra, accedi con un personaggio e digita /reload una volta. Il tuo salvataggio apparirà qui.",
+      otherTitle: "Altri addon",
     },
     table: {
       gameVersion: "Versione di gioco",
@@ -587,6 +613,7 @@ const translations = {
       size: "Dimensione",
       lastSaved: "Ultimo salvataggio",
       upload: "Caricamento",
+      addon: "Addon",
     },
     status: {
       watching: "Monitoraggio nuovi salvataggi",
@@ -605,6 +632,7 @@ const translations = {
       retrying: "Nuovo tentativo il {when}",
       uploadsOff: "Caricamenti disattivati",
       waiting: "In attesa…",
+      nothing: "Niente da condividere",
     },
     update: {
       installing: "Installazione della versione {version} in corso… l'app si riavvierà automaticamente.",
@@ -633,6 +661,8 @@ const translations = {
       saved: "Salvato.",
       autoClean: "Pulisci automaticamente i salvataggi di WoWCensus",
       autoCleanHint: "Rimuove i dati vecchi che wowcensus.io ha già. Solo a WoW chiuso, dopo una copia di sicurezza.",
+      otherAddons: "Altri addon",
+      otherAddonsHint: "Condivide anche i dati di mercato e dei dungeon di questi addon. I nomi degli altri giocatori e i testi di posta e chat vengono rimossi su questo computer prima dell'invio. Vengono condivisi solo quelli che selezioni.",
     },
     cleanup: {
       done: "Ridotto da {before} a {after} il {when}",

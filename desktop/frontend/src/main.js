@@ -41,6 +41,7 @@ let lastStatus = null;
 
 function uploadCell(f, autoUpload) {
   const r = f.lastReceipt;
+  if (f.uploaded && r?.status === "empty") return `<span class="pill">${t("pill.nothing")}</span>`;
   if (f.uploaded && r?.status === "imported") return `<span class="pill ok">${t("pill.onSite")}</span>`;
   if (f.uploaded && r?.status === "failed") return `<span class="pill warn" title="${t("pill.notUsedTitle")}">${t("pill.notUsed")}</span>`;
   if (f.uploaded) return `<span class="pill ok" title="${t("pill.uploadedTitle")}">${t("pill.uploaded", { when: when(r?.at) })}</span>`;
@@ -158,6 +159,12 @@ function renderStatus(s) {
   $("#files").innerHTML = files.map((f) => `<tr title="${esc(f.path)}">
       <td>${esc(getEditionName(f.edition))}</td><td>${esc(f.account)}</td>
       <td>${mb(f.bytes)}${cleanupNote(f)}</td><td>${when(f.modTime)}</td><td>${uploadCell(f, s.autoUpload)}</td></tr>`).join("");
+  const addonFiles = s.addonFiles || [];
+  const addonNames = {auctionator: "Auctionator", journalator: "Journalator", tsm: "TradeSkillMaster", dungeonjournal: "Dungeon Journal"};
+  $("#addon-files-block").hidden = addonFiles.length === 0;
+  $("#addon-files").innerHTML = addonFiles.map((f) => `<tr title="${esc(f.path)}">
+      <td>${esc(addonNames[f.addon] || f.addon)}${f.character ? `<br><small class="muted">${esc(f.character)}</small>` : ""}</td>
+      <td>${esc(getEditionName(f.edition))}</td><td>${mb(f.bytes)}</td><td>${when(f.modTime)}</td><td>${uploadCell(f, s.autoUpload)}</td></tr>`).join("");
   renderAddon(s.addon);
   renderUpdate(s.update);
   const log = s.log || [];
@@ -211,11 +218,13 @@ $("#btn-update").onclick = async () => {
 };
 
 const form = $("#settings");
+const SHARE_KEYS = ["auctionator", "journalator", "tsm", "dungeonjournal"];
 
 function fillSettings(v) {
   form.elements.autoUpload.checked = !!v.autoUpload;
   form.elements.startAtLogin.checked = !!v.startAtLogin;
   form.elements.autoClean.checked = !!v.autoClean;
+  for (const key of SHARE_KEYS) form.elements["share-" + key].checked = !!v.shareAddons?.[key];
   form.elements.wowRoots.value = (v.wowRoots || []).join("\n");
   const lang = v.language || getStoredLanguage() || "auto";
   form.elements.language.value = lang;
@@ -230,6 +239,7 @@ function readSettings() {
     autoUpload: form.elements.autoUpload.checked,
     startAtLogin: form.elements.startAtLogin.checked,
     autoClean: form.elements.autoClean.checked,
+    shareAddons: Object.fromEntries(SHARE_KEYS.map((key) => [key, form.elements["share-" + key].checked])),
     wowRoots: form.elements.wowRoots.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     language: form.elements.language.value,
   };

@@ -25,7 +25,7 @@ func (e *Engine) maybeClean(cfg Config, fs *FileStatus, backupDir string) bool {
 		return false
 	}
 	r, ok := e.state.Receipt(fs.SourceID, fs.SHA256)
-	if !ok || r.Status != "imported" {
+	if !ok || r.Status != "imported" || e.state.PendingReceipts(fs.SourceID) > 0 {
 		fs.CleanupWait = CleanupWaitImport
 		return false
 	}

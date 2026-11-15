@@ -14,7 +14,14 @@ const H = {
   edition: "x-wowcensus-edition",
   version: "x-wowcensus-app-version",
   client: "x-wowcensus-client-id",
+  kind: "x-wowcensus-kind",
+  mode: "x-wowcensus-mode",
+  addon: "x-wowcensus-addon",
 };
+
+const KINDS = new Set(["wowcensus", "addon"]);
+const MODES = new Set(["full", "session"]);
+const ADDONS = new Set(["auctionator", "journalator", "tsm", "dungeonjournal"]);
 
 const CLIENT_ID = /^[0-9a-f]{32}$/;
 
@@ -29,6 +36,9 @@ export async function handleUpload(req: Request, env: Env, ctx: ExecutionContext
   const clientId = h(H.client).toLowerCase() || null;
   const edition = h(H.edition);
   const appVersion = h(H.version);
+  const kind = h(H.kind) || "wowcensus";
+  const mode = h(H.mode) || "full";
+  const addon = h(H.addon) || null;
   const luaBytes = Number(h(H.luaBytes));
   const zipBytes = Number(req.headers.get("content-length"));
 
@@ -36,6 +46,9 @@ export async function handleUpload(req: Request, env: Env, ctx: ExecutionContext
   if (clientId !== null && !CLIENT_ID.test(clientId)) return fail(400, "Invalid client ID");
   if (!/^[a-z0-9_]{1,40}$/.test(edition)) return fail(400, "Invalid edition");
   if (!/^[\w.+-]{0,40}$/.test(appVersion)) return fail(400, "Invalid app version");
+  if (!KINDS.has(kind)) return fail(400, "Invalid upload kind");
+  if (!MODES.has(mode)) return fail(400, "Invalid upload mode");
+  if ((kind === "addon") !== (addon !== null) || (addon !== null && !ADDONS.has(addon))) return fail(400, "Invalid add-on");
   if (!Number.isSafeInteger(luaBytes) || luaBytes <= 0) return fail(400, "Invalid Lua size");
   if (!Number.isSafeInteger(zipBytes) || zipBytes <= 0) return fail(411, "Content-Length is required");
   if ((req.headers.get("content-type") ?? "") !== "application/zip") return fail(415, "Body must be application/zip");
@@ -62,7 +75,7 @@ export async function handleUpload(req: Request, env: Env, ctx: ExecutionContext
     stored = await env.UPLOADS.put(objectKey, req.body, {
       sha256: zipSha256,
       httpMetadata: { contentType: "application/zip" },
-      customMetadata: { device: device.id, client: clientId ?? "", sourceId, sha256, edition },
+      customMetadata: { device: device.id, client: clientId ?? "", sourceId, sha256, edition, kind, mode, addon: addon ?? "" },
     });
   } catch (err) {
     return fail(422, "Upload rejected by storage: " + String((err as Error).message ?? err).slice(0, 200));
@@ -75,10 +88,10 @@ export async function handleUpload(req: Request, env: Env, ctx: ExecutionContext
   const id = crypto.randomUUID();
   const at = now();
   const ins = await env.DB.prepare(
-    `INSERT INTO receipts (id, device_id, client_id, source_id, sha256, zip_sha256, object_key, zip_bytes, lua_bytes, edition, app_version, status, created_at, queued_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?) ON CONFLICT (device_id, source_id, sha256) DO NOTHING`,
+    `INSERT INTO receipts (id, device_id, client_id, source_id, sha256, zip_sha256, object_key, zip_bytes, lua_bytes, edition, app_version, kind, mode, addon, status, created_at, queued_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?) ON CONFLICT (device_id, source_id, sha256) DO NOTHING`,
   )
-    .bind(id, device.id, clientId, sourceId, sha256, zipSha256, objectKey, zipBytes, luaBytes, edition, appVersion, at, at)
+    .bind(id, device.id, clientId, sourceId, sha256, zipSha256, objectKey, zipBytes, luaBytes, edition, appVersion, kind, mode, addon, at, at)
     .run();
   if (!ins.meta.changes) {
     const winner = await env.DB.prepare("SELECT id, status FROM receipts WHERE device_id = ? AND source_id = ? AND sha256 = ?")
@@ -100,12 +113,13 @@ export async function handleReceipt(req: Request, env: Env, ctx: ExecutionContex
   return row ? json(row) : fail(404, "Unknown receipt");
 }
 
-export async function listPending(env: Env, limit: number): Promise<Response> {
+export async function listPending(env: Env, limit: number, kind: string | null): Promise<Response> {
+  if (kind !== null && !KINDS.has(kind)) return fail(400, "Invalid upload kind");
   const rows = await env.DB.prepare(
-    `SELECT id, client_id, device_id, source_id, sha256, zip_sha256, object_key, zip_bytes, lua_bytes, edition, app_version, created_at
-     FROM receipts WHERE status IN ('queued', 'stored') ORDER BY created_at LIMIT ?`,
+    `SELECT id, client_id, device_id, source_id, sha256, zip_sha256, object_key, zip_bytes, lua_bytes, edition, app_version, kind, mode, addon, created_at
+     FROM receipts WHERE status IN ('queued', 'stored') AND (? IS NULL OR kind = ?) ORDER BY created_at LIMIT ?`,
   )
-    .bind(Math.min(Math.max(limit, 1), 200))
+    .bind(kind, kind, Math.min(Math.max(limit, 1), 200))
     .all();
   return json({ receipts: rows.results });
 }

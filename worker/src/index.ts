@@ -17,7 +17,7 @@ export default {
       if (path === "/v1/ingest/ack" && req.method === "POST") return ingestAck(req, env);
       if (path === "/v1/ingest/pending" && req.method === "GET") {
         const denied = await requireSecret(req, env.INGEST_TOKEN);
-        return denied ?? listPending(env, Number(url.searchParams.get("limit") ?? 50));
+        return denied ?? listPending(env, Number(url.searchParams.get("limit") ?? 50), url.searchParams.get("kind"));
       }
       m = /^\/v1\/ingest\/object\/([0-9a-f-]{36})$/.exec(path);
       if (m && req.method === "GET") {

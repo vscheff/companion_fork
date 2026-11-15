@@ -46,6 +46,17 @@ type Config struct {
 	BackupKeep      int    `json:"backupKeep"`
 	BackupCapMB     int    `json:"backupCapMB"`
 	Language        string `json:"language,omitempty"`
+
+	ShareAddons map[string]bool `json:"shareAddons,omitempty"`
+}
+
+func (c Config) SharesAddons() bool {
+	for _, on := range c.ShareAddons {
+		if on {
+			return true
+		}
+	}
+	return false
 }
 
 func DefaultConfig() Config {
@@ -81,6 +92,13 @@ func (c *Config) Normalize() {
 	c.ServerURL = strings.TrimRight(strings.TrimSpace(c.ServerURL), "/")
 	c.DeviceToken = strings.TrimSpace(c.DeviceToken)
 	c.Language = strings.TrimSpace(c.Language)
+	shares := map[string]bool{}
+	for _, a := range ExtraAddons {
+		if c.ShareAddons[a.Key] {
+			shares[a.Key] = true
+		}
+	}
+	c.ShareAddons = shares
 	roots := c.WoWRoots[:0]
 	seen := map[string]bool{}
 	for _, r := range c.WoWRoots {

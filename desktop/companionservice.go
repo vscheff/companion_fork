@@ -25,6 +25,8 @@ type Settings struct {
 	WoWRoots     []string `json:"wowRoots"`
 	Registered   bool     `json:"registered"`
 	Language     string   `json:"language,omitempty"`
+
+	ShareAddons map[string]bool `json:"shareAddons"`
 }
 
 func (s *CompanionService) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
@@ -55,6 +57,7 @@ func (s *CompanionService) GetSettings() Settings {
 		WoWRoots:     cfg.WoWRoots,
 		Registered:   cfg.DeviceToken != "",
 		Language:     cfg.Language,
+		ShareAddons:  cfg.ShareAddons,
 	}
 }
 
@@ -65,6 +68,9 @@ func (s *CompanionService) SaveSettings(in Settings) (Settings, error) {
 	cfg.AutoClean = in.AutoClean
 	cfg.WoWRoots = in.WoWRoots
 	cfg.Language = in.Language
+	if in.ShareAddons != nil {
+		cfg.ShareAddons = in.ShareAddons
+	}
 	if err := s.engine.UpdateConfig(cfg); err != nil {
 		return s.GetSettings(), err
 	}
@@ -78,6 +84,10 @@ func (s *CompanionService) GetStatus() companion.Status { return s.engine.Status
 
 func (s *CompanionService) DetectInstalls(extraRoots []string) []companion.SavedVarFile {
 	return companion.DiscoverWithDefaults(extraRoots)
+}
+
+func (s *CompanionService) ExtraAddons() []companion.ExtraAddon {
+	return companion.ExtraAddons
 }
 
 func (s *CompanionService) InstallUpdate() error {

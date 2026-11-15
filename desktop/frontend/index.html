@@ -56,6 +56,20 @@
       <tbody id="files"></tbody>
     </table>
     <p id="no-files" class="muted" hidden data-i18n="saves.emptyHint">Install the add-on above, log in to a character, and type /reload once. Your save will show up here.</p>
+
+    <div id="addon-files-block" hidden>
+      <h2 data-i18n="saves.otherTitle">Other add-ons</h2>
+      <table class="files">
+        <thead><tr>
+          <th data-i18n="table.addon">Add-on</th>
+          <th data-i18n="table.gameVersion">Game version</th>
+          <th data-i18n="table.size">Size</th>
+          <th data-i18n="table.lastSaved">Last saved</th>
+          <th data-i18n="table.upload">Upload</th>
+        </tr></thead>
+        <tbody id="addon-files"></tbody>
+      </table>
+    </div>
   </section>
 
   <section id="tab-settings" class="panel">
@@ -80,6 +94,14 @@
         <label class="check"><input type="checkbox" name="startAtLogin"/> <span data-i18n="settings.startAtLogin">Start when I log in to my computer (runs in the tray)</span></label>
         <label class="check"><input type="checkbox" name="autoClean"/> <span data-i18n="settings.autoClean">Clean up WoWCensus saves automatically</span></label>
         <p class="hint" data-i18n="settings.autoCleanHint">Removes old data wowcensus.io already has. Only runs while WoW is closed, after a backup.</p>
+      </fieldset>
+      <fieldset>
+        <legend data-i18n="settings.otherAddons">Other add-ons</legend>
+        <p class="hint" data-i18n="settings.otherAddonsHint">Also share market and dungeon data from these add-ons. Other players' names, mail and chat text are removed on this computer before anything is sent. Only the ones you tick are shared.</p>
+        <label class="check"><input type="checkbox" name="share-auctionator"/> <span>Auctionator</span></label>
+        <label class="check"><input type="checkbox" name="share-journalator"/> <span>Journalator</span></label>
+        <label class="check"><input type="checkbox" name="share-tsm"/> <span>TradeSkillMaster</span></label>
+        <label class="check"><input type="checkbox" name="share-dungeonjournal"/> <span>Dungeon Journal</span></label>
       </fieldset>
       <fieldset>
         <legend data-i18n="settings.wowFolders">World of Warcraft folders</legend>
