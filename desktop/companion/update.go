@@ -49,8 +49,10 @@ type UpdateStatus struct {
 	Current     string `json:"current"`
 	Downloading bool   `json:"downloading"`
 	Ready       bool   `json:"ready"`
-	Installing  bool   `json:"installing"`
-	Error       string `json:"error,omitempty"`
+	Installing  bool      `json:"installing"`
+	Error       string    `json:"error,omitempty"`
+	CheckedAt   time.Time `json:"checkedAt"`
+	CheckError  string    `json:"checkError,omitempty"`
 }
 
 type Relaunch struct {

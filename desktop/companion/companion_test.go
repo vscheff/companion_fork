@@ -724,6 +724,93 @@ func TestInstallToUserHome(t *testing.T) {
 	}
 }
 
+func TestInstallReplacesOlderInstalledCopy(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("Mac compares bundle versions")
+	}
+	dir := t.TempDir()
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "Local"))
+	t.Setenv("APPIMAGE", "")
+	target := filepath.Join(dir, "installed", "wowcensus-companion.exe")
+	oldInstallPath := installPath
+	installPath = func() (string, error) { return target, nil }
+	defer func() { installPath = oldInstallPath }()
+	source := filepath.Join(dir, "download.exe")
+	if err := os.WriteFile(source, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := executablePath
+	executablePath = func() (string, error) { return source, nil }
+	defer func() { executablePath = old }()
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, installed, err := InstallToUserHome(nil); err != nil || !installed {
+		t.Fatalf("install without marker: %v %v", installed, err)
+	}
+	if b, _ := os.ReadFile(target); string(b) != "new" {
+		t.Fatalf("copy without a version marker was not replaced: %q", b)
+	}
+	if v := installedVersion(target); v != AppVersion {
+		t.Fatalf("version marker is %q", v)
+	}
+	if err := os.WriteFile(target, []byte("newer"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(versionMarkerPath(target), []byte("99.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, installed, err := InstallToUserHome(nil); err != nil || !installed {
+		t.Fatalf("install over newer copy: %v %v", installed, err)
+	}
+	if b, _ := os.ReadFile(target); string(b) != "newer" {
+		t.Fatalf("newer installed copy was overwritten: %q", b)
+	}
+	if err := os.WriteFile(versionMarkerPath(target), []byte("0.0.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := InstallToUserHome(nil); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(target); string(b) != "new" {
+		t.Fatalf("older installed copy was not replaced: %q", b)
+	}
+	executablePath = func() (string, error) { return target, nil }
+	_ = os.WriteFile(versionMarkerPath(target), []byte("0.0.1\n"), 0o644)
+	if _, installed, err := InstallToUserHome(nil); err != nil || installed {
+		t.Fatalf("installed copy relaunched itself: %v %v", installed, err)
+	}
+	if v := installedVersion(target); v != AppVersion {
+		t.Fatalf("installed copy did not record its version: %q", v)
+	}
+}
+
+func TestManualUpdateCheckReportsFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	old := CompanionReleaseAPI
+	CompanionReleaseAPI = srv.URL + "/latest"
+	defer func() { CompanionReleaseAPI = old }()
+	e, _ := NewEngine(t.TempDir())
+	e.httpClient = srv.Client()
+	st := e.CheckForUpdate(context.Background())
+	if st.CheckError == "" || st.Available || st.Current != AppVersion || st.CheckedAt.IsZero() {
+		t.Fatalf("failed check status %+v", st)
+	}
+	ok := fakeRelease(t, AppVersion, []byte("x"), "")
+	defer ok.Close()
+	CompanionReleaseAPI = ok.URL + "/latest"
+	e.httpClient = ok.Client()
+	if st := e.CheckForUpdate(context.Background()); st.CheckError != "" || st.Available {
+		t.Fatalf("up-to-date status %+v", st)
+	}
+}
+
 func TestMacInstallPathDetection(t *testing.T) {
 	bundle := filepath.Join(t.TempDir(), "WoWCensus Companion.app")
 	info := filepath.Join(bundle, "Contents", "Info.plist")

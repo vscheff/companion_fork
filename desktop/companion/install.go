@@ -191,14 +191,22 @@ func InstallToUserHome(args []string) (Relaunch, bool, error) {
 		source = os.Getenv("APPIMAGE")
 	}
 	if sameInstallPath(source, target) {
+		writeInstalledVersion(target)
 		return Relaunch{}, false, nil
 	}
 	if _, err := os.Stat(target); os.IsNotExist(err) {
 		if err := copyInstallFile(source, target); err != nil {
 			return Relaunch{}, false, err
 		}
+		writeInstalledVersion(target)
 	} else if err != nil {
 		return Relaunch{}, false, err
+	} else if v := installedVersion(target); v == "" || NewerVersion(AppVersion, v) {
+		stopInstalledCopy(target)
+		if err := replaceInstalledFile(source, target); err != nil {
+			return Relaunch{}, false, err
+		}
+		writeInstalledVersion(target)
 	}
 	if runtime.GOOS == "linux" {
 		if err := installLinuxLauncher(target); err != nil {
@@ -206,4 +214,36 @@ func InstallToUserHome(args []string) (Relaunch, bool, error) {
 		}
 	}
 	return Relaunch{Path: target, Args: args}, true, nil
+}
+
+func versionMarkerPath(target string) string {
+	return filepath.Join(filepath.Dir(target), "version.txt")
+}
+
+func installedVersion(target string) string {
+	data, err := os.ReadFile(versionMarkerPath(target))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func writeInstalledVersion(target string) {
+	if installedVersion(target) == AppVersion {
+		return
+	}
+	_ = writeFileAtomic(versionMarkerPath(target), []byte(AppVersion+"\n"), 0o644)
+}
+
+func replaceInstalledFile(source, target string) error {
+	old := target + ".old"
+	_ = os.Remove(old)
+	if err := os.Rename(target, old); err != nil {
+		return fmt.Errorf("could not replace the installed app: %w", err)
+	}
+	if err := copyInstallFile(source, target); err != nil {
+		_ = os.Rename(old, target)
+		return err
+	}
+	return nil
 }

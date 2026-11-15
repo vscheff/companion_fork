@@ -112,6 +112,10 @@ func (s *CompanionService) CheckForUpdate() companion.UpdateStatus {
 	return s.engine.CheckForUpdate(s.ctx)
 }
 
+func (s *CompanionService) Version() string {
+	return companion.AppVersion
+}
+
 func (s *CompanionService) InstallAddon() (string, error) {
 	return s.engine.InstallAddon(s.ctx)
 }

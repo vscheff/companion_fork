@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -166,6 +168,7 @@ func main() {
 		win.Show()
 		win.Restore()
 		win.Focus()
+		go engine.CheckForUpdateIfOlder(context.Background(), time.Hour)
 	}
 	quit := func() {
 		quitting.Store(true)

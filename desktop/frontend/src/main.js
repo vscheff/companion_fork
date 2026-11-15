@@ -167,6 +167,7 @@ function renderStatus(s) {
       <td>${esc(getEditionName(f.edition))}</td><td>${mb(f.bytes)}</td><td>${when(f.modTime)}</td><td>${uploadCell(f, s.autoUpload)}</td></tr>`).join("");
   renderAddon(s.addon);
   renderUpdate(s.update);
+  renderVersion();
   const log = s.log || [];
   $("#log").innerHTML = log.slice().reverse().map((l) =>
     `<li class="${esc(l.level)}"><time>${when(l.at)}</time> ${esc(l.message)}</li>`).join("");
@@ -193,6 +194,41 @@ $("#btn-addon").onclick = async () => {
     installing = false;
     btn.disabled = false;
     CompanionService.GetStatus().then(renderStatus);
+  }
+};
+
+let appVersion = "";
+
+function renderVersion() {
+  $("#app-version").textContent = appVersion ? t("settings.version", { version: appVersion }) : "";
+}
+
+CompanionService.Version().then((v) => {
+  appVersion = v;
+  renderVersion();
+});
+
+$("#btn-check-update").onclick = async () => {
+  const btn = $("#btn-check-update");
+  const out = $("#check-update-msg");
+  btn.disabled = true;
+  out.className = "muted small";
+  out.textContent = t("settings.checkingUpdate");
+  try {
+    const u = await CompanionService.CheckForUpdate();
+    if (u?.checkError) {
+      out.className = "error small";
+      out.textContent = t("settings.checkFailed", { error: u.checkError });
+    } else if (u?.available) {
+      out.textContent = t("settings.updateFound", { version: u.version });
+    } else {
+      out.textContent = t("settings.upToDate", { version: u?.current || appVersion });
+    }
+  } catch (err) {
+    out.className = "error small";
+    out.textContent = t("settings.checkFailed", { error: String(err?.message || err) });
+  } finally {
+    btn.disabled = false;
   }
 };
 

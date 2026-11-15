@@ -255,7 +255,7 @@ func (e *Engine) Run(ctx context.Context) {
 	e.setRunning(true)
 	defer e.setRunning(false)
 	e.logf("info", "Watcher started (polling every %ds)", e.Config().PollSeconds)
-	e.maybeCheckUpdate(ctx)
+	e.CheckForUpdate(ctx)
 	e.reconcile(ctx, actScan)
 	for {
 		interval := time.Duration(e.Config().PollSeconds) * time.Second
@@ -855,15 +855,33 @@ func (e *Engine) maybeCheckUpdate(ctx context.Context) {
 	e.CheckForUpdate(ctx)
 }
 
+func (e *Engine) CheckForUpdateIfOlder(ctx context.Context, age time.Duration) {
+	e.mu.Lock()
+	last := e.status.Update.CheckedAt
+	e.mu.Unlock()
+	if !last.IsZero() && e.now().Sub(last) < age {
+		return
+	}
+	e.CheckForUpdate(ctx)
+}
+
 func (e *Engine) CheckForUpdate(ctx context.Context) UpdateStatus {
 	info, err := FetchLatestCompanion(ctx, e.httpClient)
 	if err != nil {
-		return e.Status().Update
+		e.mu.Lock()
+		e.status.Update.Current = AppVersion
+		e.status.Update.CheckedAt = e.now()
+		e.status.Update.CheckError = err.Error()
+		st := e.status.Update
+		e.mu.Unlock()
+		e.logf("error", "Update check failed: %v", err)
+		e.notify()
+		return st
 	}
 	_, seen := e.state.UpdateMarks()
 	e.mu.Lock()
 	previous := e.status.Update
-	st := UpdateStatus{Current: AppVersion, Installing: previous.Installing}
+	st := UpdateStatus{Current: AppVersion, Installing: previous.Installing, CheckedAt: e.now()}
 	newVersion := ""
 	prepare := false
 	if NewerVersion(info.Version, AppVersion) {

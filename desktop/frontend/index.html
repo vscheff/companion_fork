@@ -104,6 +104,14 @@
         <label class="check"><input type="checkbox" name="share-dungeonjournal"/> <span>Dungeon Journal</span></label>
       </fieldset>
       <fieldset>
+        <legend data-i18n="settings.updates">Updates</legend>
+        <p class="hint" data-i18n="settings.updatesHint">The app checks for a new version each time it opens and once a day.</p>
+        <div class="update-row">
+          <button type="button" id="btn-check-update" class="ghost small" data-i18n="settings.checkUpdate">Check for new version</button>
+          <span id="check-update-msg" class="muted small"></span>
+        </div>
+      </fieldset>
+      <fieldset>
         <legend data-i18n="settings.wowFolders">World of Warcraft folders</legend>
         <textarea name="wowRoots" rows="3" placeholder="C:\Program Files (x86)\World of Warcraft"></textarea>
         <p class="hint" data-i18n="settings.wowFoldersHint">Only needed if WoW is installed somewhere unusual. One folder per line.</p>
@@ -121,6 +129,8 @@
     <ol id="log" class="log"></ol>
   </section>
 </main>
+
+<div id="app-version" class="app-version"></div>
 
 <script type="module" src="/src/main.js"></script>
 </body>
