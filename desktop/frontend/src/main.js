@@ -50,6 +50,18 @@ function uploadCell(f, autoUpload) {
   return `<span class="pill">${t("pill.waiting")}</span>`;
 }
 
+function cleanupNote(f) {
+  const c = f.lastCleanup;
+  let out = "";
+  if (c) {
+    const title = t("cleanup.doneTitle", { backup: c.backup || "" });
+    out += `<br><small class="muted" title="${esc(title)}">${esc(t("cleanup.done", { before: mb(c.bytesBefore), after: mb(c.bytesAfter), when: when(c.at) }))}</small>`;
+  }
+  if (f.cleanupWait === "wow") out += `<br><small class="muted">${esc(t("cleanup.waitWoW"))}</small>`;
+  else if (f.cleanupWait === "import") out += `<br><small class="muted">${esc(t("cleanup.waitImport"))}</small>`;
+  return out;
+}
+
 function renderAddon(a) {
   const installs = a?.installs || [];
   const latest = a?.latest || "";
@@ -145,7 +157,7 @@ function renderStatus(s) {
   $("#no-files").hidden = files.length > 0 || !scanned;
   $("#files").innerHTML = files.map((f) => `<tr title="${esc(f.path)}">
       <td>${esc(getEditionName(f.edition))}</td><td>${esc(f.account)}</td>
-      <td>${mb(f.bytes)}</td><td>${when(f.modTime)}</td><td>${uploadCell(f, s.autoUpload)}</td></tr>`).join("");
+      <td>${mb(f.bytes)}${cleanupNote(f)}</td><td>${when(f.modTime)}</td><td>${uploadCell(f, s.autoUpload)}</td></tr>`).join("");
   renderAddon(s.addon);
   renderUpdate(s.update);
   const log = s.log || [];
@@ -203,6 +215,7 @@ const form = $("#settings");
 function fillSettings(v) {
   form.elements.autoUpload.checked = !!v.autoUpload;
   form.elements.startAtLogin.checked = !!v.startAtLogin;
+  form.elements.autoClean.checked = !!v.autoClean;
   form.elements.wowRoots.value = (v.wowRoots || []).join("\n");
   const lang = v.language || getStoredLanguage() || "auto";
   form.elements.language.value = lang;
@@ -216,6 +229,7 @@ function readSettings() {
   return {
     autoUpload: form.elements.autoUpload.checked,
     startAtLogin: form.elements.startAtLogin.checked,
+    autoClean: form.elements.autoClean.checked,
     wowRoots: form.elements.wowRoots.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     language: form.elements.language.value,
   };

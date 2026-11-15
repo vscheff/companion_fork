@@ -86,6 +86,14 @@ const translations = {
       noSavesInFolders: "No WoWCensus saves found in those folders yet.",
       saveSettings: "Save settings",
       saved: "Saved.",
+      autoClean: "Clean up WoWCensus saves automatically",
+      autoCleanHint: "Removes old data wowcensus.io already has. Only runs while WoW is closed, after a backup.",
+    },
+    cleanup: {
+      done: "Cleaned {before} → {after} on {when}",
+      doneTitle: "Backup of the original file: {backup}",
+      waitWoW: "Cleanup waits until World of Warcraft is closed",
+      waitImport: "Cleanup waits until wowcensus.io has added this save",
     },
     editions: {
       retail: "Retail",
@@ -187,6 +195,14 @@ const translations = {
       noSavesInFolders: "해당 폴더에서 아직 WoWCensus 저장 파일을 찾을 수 없습니다.",
       saveSettings: "설정 저장",
       saved: "저장되었습니다.",
+      autoClean: "WoWCensus 저장 파일 자동 정리",
+      autoCleanHint: "wowcensus.io에 이미 있는 오래된 데이터를 삭제합니다. WoW가 종료된 상태에서 백업 후에만 실행됩니다.",
+    },
+    cleanup: {
+      done: "{when}에 {before} → {after}(으)로 정리됨",
+      doneTitle: "원본 파일 백업: {backup}",
+      waitWoW: "World of Warcraft가 종료되면 정리합니다",
+      waitImport: "wowcensus.io에 이 저장 파일이 반영되면 정리합니다",
     },
     editions: {
       retail: "리테일",
@@ -288,6 +304,14 @@ const translations = {
       noSavesInFolders: "Aún no se han encontrado guardados de WoWCensus en esas carpetas.",
       saveSettings: "Guardar ajustes",
       saved: "Guardado.",
+      autoClean: "Limpiar automáticamente los guardados de WoWCensus",
+      autoCleanHint: "Elimina datos antiguos que wowcensus.io ya tiene. Solo con WoW cerrado y tras una copia de seguridad.",
+    },
+    cleanup: {
+      done: "Reducido de {before} a {after} el {when}",
+      doneTitle: "Copia de seguridad del archivo original: {backup}",
+      waitWoW: "La limpieza espera a que cierres World of Warcraft",
+      waitImport: "La limpieza espera a que wowcensus.io añada este guardado",
     },
     editions: {
       retail: "Retail",
@@ -389,6 +413,14 @@ const translations = {
       noSavesInFolders: "In diesen Ordnern wurden noch keine WoWCensus-Speicherstände gefunden.",
       saveSettings: "Einstellungen speichern",
       saved: "Gespeichert.",
+      autoClean: "WoWCensus-Speicherdateien automatisch aufräumen",
+      autoCleanHint: "Entfernt alte Daten, die wowcensus.io schon hat. Nur bei geschlossenem WoW und nach einer Sicherung.",
+    },
+    cleanup: {
+      done: "Am {when} von {before} auf {after} verkleinert",
+      doneTitle: "Sicherung der Originaldatei: {backup}",
+      waitWoW: "Das Aufräumen wartet, bis World of Warcraft geschlossen ist",
+      waitImport: "Das Aufräumen wartet, bis wowcensus.io diese Speicherung übernommen hat",
     },
     editions: {
       retail: "Retail",
@@ -490,6 +522,14 @@ const translations = {
       noSavesInFolders: "Aucune sauvegarde WoWCensus trouvée dans ces dossiers pour l'instant.",
       saveSettings: "Enregistrer les paramètres",
       saved: "Enregistré.",
+      autoClean: "Nettoyer automatiquement les sauvegardes WoWCensus",
+      autoCleanHint: "Supprime les anciennes données que wowcensus.io possède déjà. Seulement quand WoW est fermé, après une copie de sauvegarde.",
+    },
+    cleanup: {
+      done: "Réduit de {before} à {after} le {when}",
+      doneTitle: "Copie du fichier d'origine : {backup}",
+      waitWoW: "Le nettoyage attend la fermeture de World of Warcraft",
+      waitImport: "Le nettoyage attend que wowcensus.io ait ajouté cette sauvegarde",
     },
     editions: {
       retail: "Retail",
@@ -591,6 +631,14 @@ const translations = {
       noSavesInFolders: "Nessun salvataggio di WoWCensus ancora trovato in quelle cartelle.",
       saveSettings: "Salva impostazioni",
       saved: "Salvato.",
+      autoClean: "Pulisci automaticamente i salvataggi di WoWCensus",
+      autoCleanHint: "Rimuove i dati vecchi che wowcensus.io ha già. Solo a WoW chiuso, dopo una copia di sicurezza.",
+    },
+    cleanup: {
+      done: "Ridotto da {before} a {after} il {when}",
+      doneTitle: "Copia del file originale: {backup}",
+      waitWoW: "La pulizia attende la chiusura di World of Warcraft",
+      waitImport: "La pulizia attende che wowcensus.io aggiunga questo salvataggio",
     },
     editions: {
       retail: "Retail",

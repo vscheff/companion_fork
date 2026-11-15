@@ -28,6 +28,8 @@ type FileStatus struct {
 	LastReceipt   *Receipt   `json:"lastReceipt,omitempty"`
 	NextRetry     *time.Time `json:"nextRetry,omitempty"`
 	LastError     string     `json:"lastError,omitempty"`
+	LastCleanup   *Cleanup   `json:"lastCleanup,omitempty"`
+	CleanupWait   string     `json:"cleanupWait,omitempty"`
 }
 
 type Status struct {
@@ -77,7 +79,9 @@ type Engine struct {
 	newClient        func(serverURL, token string) *Client
 	discover         func(roots []string) []SavedVarFile
 	discoverEditions func(roots []string) []string
+	wowRunning       func() (bool, error)
 	httpClient       *http.Client
+	cleanChecked     map[string]cleanCheck
 
 	update        UpdateInfo
 	updateData    []byte
@@ -110,7 +114,9 @@ func NewEngine(appDir string) (*Engine, error) {
 		newClient:        NewClient,
 		discover:         DiscoverWithDefaults,
 		discoverEditions: DiscoverEditionsWithDefaults,
+		wowRunning:       WoWRunning,
 		httpClient:       &http.Client{Timeout: addonDownloadLimit},
+		cleanChecked:     map[string]cleanCheck{},
 	}
 	e.status.Files = []FileStatus{}
 	e.status.AutoUpload = cfg.AutoUpload
@@ -164,7 +170,12 @@ func (e *Engine) UpdateConfig(c Config) error {
 	e.cfg = c
 	e.status.AutoUpload = c.AutoUpload
 	e.mu.Unlock()
-	e.logf("info", "Settings saved (automatic uploads %s)", onOff(c.AutoUpload))
+	if c.AutoClean != old.AutoClean || c.CleanKeepDays != old.CleanKeepDays {
+		e.mu.Lock()
+		e.cleanChecked = map[string]cleanCheck{}
+		e.mu.Unlock()
+	}
+	e.logf("info", "Settings saved (automatic uploads %s, automatic cleanup %s)", onOff(c.AutoUpload), onOff(c.AutoClean))
 	e.Trigger(actScan)
 	return nil
 }
@@ -359,6 +370,9 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 			fs.NextRetry = &t
 			fs.LastError = fail.LastErr
 		}
+		if e.maybeClean(cfg, &fs, backupDir) {
+			backedUp = true
+		}
 		statuses = append(statuses, fs)
 	}
 
@@ -443,12 +457,19 @@ func (e *Engine) Report() MaintenanceReport {
 	if over > 0 {
 		rep.Notes = append(rep.Notes, fmt.Sprintf(
 			"%d file(s) exceed %d MB. Large SavedVariables slow WoW's /reload and logout. "+
-				"The companion does not trim them: safe compaction needs import acknowledgements from the server and must run while WoW is closed.",
+				"Turn on automatic cleanup in Settings to trim data wowcensus.io already has; it only runs while WoW is closed.",
 			over, cfg.SizeThresholdMB))
 	}
 	rep.Notes = append(rep.Notes,
 		"Upload receipts say \"queued\": stored and waiting for the ingest worker, not yet imported into the database.",
-		"Backups are companion-made gzip copies, rotated by generation count and total size. Your live WoW files are never modified.")
+		"Backups are companion-made gzip copies, rotated by generation count and total size.")
+	if cfg.AutoClean {
+		rep.Notes = append(rep.Notes, fmt.Sprintf(
+			"Automatic cleanup is on: saves above %d MB that wowcensus.io has imported are trimmed to the last %d days while WoW is closed, after a backup.",
+			cfg.CleanAboveMB, cfg.CleanKeepDays))
+	} else {
+		rep.Notes = append(rep.Notes, "Automatic cleanup is off, so your WoW files are never modified.")
+	}
 	return rep
 }
 

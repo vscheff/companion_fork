@@ -30,6 +30,10 @@ type Config struct {
 
 	AutoBackup bool `json:"autoBackup"`
 
+	AutoClean     bool `json:"autoClean"`
+	CleanKeepDays int  `json:"cleanKeepDays"`
+	CleanAboveMB  int  `json:"cleanAboveMB"`
+
 	WoWRoots []string `json:"wowRoots"`
 
 	ServerURL   string `json:"serverUrl"`
@@ -51,6 +55,8 @@ func DefaultConfig() Config {
 		PollSeconds:     defaultPollSeconds,
 		BackupKeep:      defaultBackupKeep,
 		BackupCapMB:     defaultBackupCapMB,
+		CleanKeepDays:   defaultCleanKeepDays,
+		CleanAboveMB:    defaultCleanAboveMB,
 	}
 }
 
@@ -64,6 +70,13 @@ func (c *Config) Normalize() {
 	}
 	if c.BackupCapMB <= 0 {
 		c.BackupCapMB = defaultBackupCapMB
+	}
+	if c.CleanKeepDays <= 0 {
+		c.CleanKeepDays = defaultCleanKeepDays
+	}
+	c.CleanKeepDays = min(max(c.CleanKeepDays, minCleanKeepDays), maxCleanKeepDays)
+	if c.CleanAboveMB <= 0 {
+		c.CleanAboveMB = defaultCleanAboveMB
 	}
 	c.ServerURL = strings.TrimRight(strings.TrimSpace(c.ServerURL), "/")
 	c.DeviceToken = strings.TrimSpace(c.DeviceToken)

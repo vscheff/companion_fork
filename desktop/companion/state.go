@@ -39,6 +39,13 @@ type State struct {
 	Receipts    map[string]Receipt  `json:"receipts"`
 	Seen        map[string]seenFile `json:"seen"`
 	Failures    map[string]Failure  `json:"failures"`
+	Cleanups    map[string]Cleanup  `json:"cleanups,omitempty"`
+}
+
+type Cleanup struct {
+	CleanupResult
+	At     time.Time `json:"at"`
+	Backup string    `json:"backup"`
 }
 
 type seenFile struct {
@@ -77,6 +84,9 @@ func LoadState(appDir string) (*State, error) {
 	}
 	if s.Failures == nil {
 		s.Failures = map[string]Failure{}
+	}
+	if s.Cleanups == nil {
+		s.Cleanups = map[string]Cleanup{}
 	}
 	return s, s.Save()
 }
@@ -192,6 +202,20 @@ func (s *State) SeenSig(path string) (seenFile, bool) {
 func (s *State) SetSeen(path string, sig FileSig, sha string) error {
 	s.mu.Lock()
 	s.Seen[pathKey(path)] = seenFile{Sig: sig, SHA256: sha}
+	s.mu.Unlock()
+	return s.Save()
+}
+
+func (s *State) LastCleanup(sourceID string) (Cleanup, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.Cleanups[sourceID]
+	return c, ok
+}
+
+func (s *State) PutCleanup(sourceID string, c Cleanup) error {
+	s.mu.Lock()
+	s.Cleanups[sourceID] = c
 	s.mu.Unlock()
 	return s.Save()
 }
