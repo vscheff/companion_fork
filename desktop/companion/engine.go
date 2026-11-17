@@ -234,10 +234,20 @@ func (e *Engine) Status() Status {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	s := e.status
-	s.Files = append([]FileStatus{}, e.status.Files...)
-	s.AddonFiles = append([]FileStatus{}, e.status.AddonFiles...)
+	s.Files = publicStatuses(e.status.Files)
+	s.AddonFiles = publicStatuses(e.status.AddonFiles)
 	s.Log = append([]LogEntry{}, e.status.Log...)
 	return s
+}
+
+func publicStatuses(in []FileStatus) []FileStatus {
+	out := make([]FileStatus, len(in))
+	for i, f := range in {
+		f.SavedVarFile = f.SavedVarFile.Public()
+		f.LastError = HideAccountFolders(f.LastError)
+		out[i] = f
+	}
+	return out
 }
 
 func (e *Engine) Trigger(a action) {
@@ -340,7 +350,7 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 			switch {
 			case errors.Is(err, ErrUnstable):
 				if forceUpload || forceBackup {
-					e.logf("warn", "%s (%s) is still being written; will retry", f.Edition, f.Account)
+					e.logf("warn", "%s (%s) is still being written; will retry", f.Edition, f.AccountLabel())
 				}
 				fs.LastError = "waiting for the file to settle"
 				statuses = append(statuses, fs)
@@ -355,7 +365,7 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 			if changed {
 				_ = e.state.SetSeen(f.Path, snap.Sig, snap.SHA256)
 				if known {
-					e.logf("info", "New save detected: %s / %s (%s)", f.Edition, f.Account, humanBytes(sig.Size))
+					e.logf("info", "New save detected: %s / %s (%s)", f.Edition, f.AccountLabel(), humanBytes(sig.Size))
 				}
 			}
 			if wantBackup {
@@ -376,7 +386,7 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 			if wantUpload && !hasReceipt && (forceUpload || !inBackoff) {
 				e.uploadCensus(ctx, cfg, snap, fs.SourceID)
 			} else if forceUpload && hasReceipt {
-				e.logf("info", "%s / %s already uploaded (same content)", f.Edition, f.Account)
+				e.logf("info", "%s / %s already uploaded (same content)", f.Edition, f.AccountLabel())
 			}
 		}
 
@@ -495,7 +505,7 @@ func (e *Engine) coverWithLatest(sourceID, fileSHA string) bool {
 }
 
 func (e *Engine) uploadCensus(ctx context.Context, cfg Config, snap *Snapshot, sourceID string) {
-	label := snap.File.Edition + " / " + snap.File.Account
+	label := snap.File.Edition + " / " + snap.File.AccountLabel()
 	m := NewManifest(snap, sourceID)
 	data := snap.Data
 	cur, hasCursor := e.state.Cursor(sourceID)
@@ -687,7 +697,7 @@ func (e *Engine) setBusy(s string) {
 func (e *Engine) logf(level, format string, args ...any) {
 	e.mu.Lock()
 	e.logSeq++
-	e.status.Log = append(e.status.Log, LogEntry{Seq: e.logSeq, At: e.now().UTC(), Level: level, Message: fmt.Sprintf(format, args...)})
+	e.status.Log = append(e.status.Log, LogEntry{Seq: e.logSeq, At: e.now().UTC(), Level: level, Message: HideAccountFolders(fmt.Sprintf(format, args...))})
 	if len(e.status.Log) > maxLog {
 		e.status.Log = e.status.Log[len(e.status.Log)-maxLog:]
 	}
@@ -743,7 +753,7 @@ func (e *Engine) refreshReceipts(ctx context.Context, cfg Config, groups ...[]Fi
 			fresh.Status, fresh.CheckedAt = updated[r.ReceiptID], e.now().UTC()
 			files[i].LastReceipt = &fresh
 			if fresh.Status == "imported" && files[i].Addon == "" && e.state.PendingReceipts(files[i].SourceID) == 0 {
-				e.logf("info", "%s / %s is now on wowcensus.io", files[i].Edition, files[i].Account)
+				e.logf("info", "%s / %s is now on wowcensus.io", files[i].Edition, files[i].AccountLabel())
 			}
 		}
 	}

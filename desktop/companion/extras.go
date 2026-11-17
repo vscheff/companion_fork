@@ -71,12 +71,14 @@ func DiscoverAddonFiles(editionDirs []string, enabled map[string]bool) []AddonFi
 			continue
 		}
 		edition := editionName(ed)
+		n := 0
 		for _, acct := range accounts {
-			if !acct.IsDir() || strings.EqualFold(acct.Name(), "SavedVariables") {
+			if !isAccountDir(acct) {
 				continue
 			}
+			n++
 			acctDir := filepath.Join(accountsDir, acct.Name())
-			base := SavedVarFile{Root: ed, Edition: edition, Account: acct.Name()}
+			base := SavedVarFile{Root: ed, Edition: edition, Account: acct.Name(), AccountNumber: n}
 			for _, a := range ExtraAddons {
 				if !enabled[a.Key] {
 					continue

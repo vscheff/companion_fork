@@ -1,6 +1,7 @@
 package companion
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,10 +11,42 @@ import (
 )
 
 type SavedVarFile struct {
-	Path    string `json:"path"`
-	Root    string `json:"root"`
-	Edition string `json:"edition"`
-	Account string `json:"account"`
+	Path          string `json:"path"`
+	Root          string `json:"root"`
+	Edition       string `json:"edition"`
+	Account       string `json:"-"`
+	AccountNumber int    `json:"accountNumber"`
+}
+
+var accountFolderRe = regexp.MustCompile(`(?i)([\\/]WTF[\\/]Account[\\/])[^\\/]+`)
+
+func HideAccountFolders(s string) string {
+	return accountFolderRe.ReplaceAllString(s, "${1}…")
+}
+
+func (f SavedVarFile) AccountLabel() string {
+	if f.AccountNumber > 0 {
+		return fmt.Sprintf("Account %d", f.AccountNumber)
+	}
+	return "Account"
+}
+
+func (f SavedVarFile) Public() SavedVarFile {
+	f.Path = HideAccountFolders(f.Path)
+	f.Root = HideAccountFolders(f.Root)
+	return f
+}
+
+func PublicFiles(files []SavedVarFile) []SavedVarFile {
+	out := make([]SavedVarFile, len(files))
+	for i, f := range files {
+		out[i] = f.Public()
+	}
+	return out
+}
+
+func isAccountDir(e os.DirEntry) bool {
+	return e.IsDir() && !strings.EqualFold(e.Name(), "SavedVariables")
 }
 
 const (
@@ -181,13 +214,15 @@ func savedVarsInEdition(edDir string) []SavedVarFile {
 	}
 	edition := editionName(edDir)
 	var out []SavedVarFile
+	n := 0
 	for _, e := range entries {
-		if !e.IsDir() || strings.EqualFold(e.Name(), "SavedVariables") {
+		if !isAccountDir(e) {
 			continue
 		}
+		n++
 		p := filepath.Join(accountsDir, e.Name(), "SavedVariables", SavedVariablesName)
 		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
-			out = append(out, SavedVarFile{Path: p, Root: edDir, Edition: edition, Account: e.Name()})
+			out = append(out, SavedVarFile{Path: p, Root: edDir, Edition: edition, Account: e.Name(), AccountNumber: n})
 		}
 	}
 	return out

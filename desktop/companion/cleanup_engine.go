@@ -49,7 +49,7 @@ func (e *Engine) maybeClean(cfg Config, fs *FileStatus, backupDir string) bool {
 	e.mu.Lock()
 	e.cleanChecked[key] = cleanCheck{sha: fs.SHA256, at: now}
 	e.mu.Unlock()
-	label := fs.Edition + " / " + fs.Account
+	label := fs.Edition + " / " + fs.AccountLabel()
 	if err != nil {
 		e.logf("warn", "Cleanup skipped for %s: %v", label, err)
 		return false

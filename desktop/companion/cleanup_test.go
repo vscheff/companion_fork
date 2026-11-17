@@ -551,7 +551,7 @@ func TestEngineCleansOnlyAfterImportWhileWoWIsClosed(t *testing.T) {
 	}
 	found := false
 	for _, l := range e.Status().Log {
-		if strings.HasPrefix(l.Message, "Cleaned up forever / ACC:") {
+		if strings.HasPrefix(l.Message, "Cleaned up forever / Account 1:") {
 			found = true
 		}
 	}

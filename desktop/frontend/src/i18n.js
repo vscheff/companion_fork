@@ -8,6 +8,7 @@ const translations = {
       status: "Status",
       settings: "Settings",
       activity: "Activity",
+      about: "About",
     },
     banner: {
       updateAvailable: "A new version is available.",
@@ -40,6 +41,7 @@ const translations = {
     table: {
       gameVersion: "Game version",
       account: "Account",
+      accountN: "Account {n}",
       size: "Size",
       lastSaved: "Last saved",
       upload: "Upload",
@@ -108,6 +110,13 @@ const translations = {
       waitWoW: "Cleanup waits until World of Warcraft is closed",
       waitImport: "Cleanup waits until wowcensus.io has added this save",
     },
+    about: {
+      appTitle: "In the app",
+      privacyTitle: "Privacy",
+      libs: "This application is built on the following libraries: Wails V3, Go, {webview}, @wailsio/runtime, and Vite.",
+      privacy: "We do not collect personal information, account details, or identifying device information. The app only transmits the data necessary for its intended functionality, using a randomized device identifier to organize uploads.",
+      consent: "By enabling uploads, you acknowledge and consent to the collection, transmission, storage, and processing of game-related data for the purpose of providing and improving WoWCensus services, including generating aggregated statistics and analytics. Only data necessary for these purposes is collected. You may withdraw your consent at any time by disabling uploads.",
+    },
     editions: {
       retail: "Retail",
       classic_era: "Classic Era",
@@ -130,6 +139,7 @@ const translations = {
       status: "상태",
       settings: "설정",
       activity: "활동",
+      about: "정보",
     },
     banner: {
       updateAvailable: "새 버전이 출시되었습니다.",
@@ -162,6 +172,7 @@ const translations = {
     table: {
       gameVersion: "게임 버전",
       account: "계정",
+      accountN: "계정 {n}",
       size: "크기",
       lastSaved: "마지막 저장",
       upload: "업로드",
@@ -230,6 +241,13 @@ const translations = {
       waitWoW: "World of Warcraft가 종료되면 정리합니다",
       waitImport: "wowcensus.io에 이 저장 파일이 반영되면 정리합니다",
     },
+    about: {
+      appTitle: "앱",
+      privacyTitle: "개인정보",
+      libs: "이 애플리케이션은 다음 라이브러리로 만들어졌습니다: Wails V3, Go, {webview}, @wailsio/runtime, Vite.",
+      privacy: "개인 정보, 계정 정보, 기기를 식별할 수 있는 정보는 수집하지 않습니다. 앱은 의도된 기능에 필요한 데이터만 전송하며, 업로드를 정리하기 위해 임의로 생성된 기기 식별자를 사용합니다.",
+      consent: "업로드를 켜면 WoWCensus 서비스를 제공하고 개선하기 위해(집계 통계 및 분석 생성 포함) 게임 관련 데이터가 수집, 전송, 저장 및 처리되는 것을 인지하고 이에 동의하게 됩니다. 이 목적에 필요한 데이터만 수집합니다. 업로드를 끄면 언제든지 동의를 철회할 수 있습니다.",
+    },
     editions: {
       retail: "리테일",
       classic_era: "클래식 시대",
@@ -252,6 +270,7 @@ const translations = {
       status: "Estado",
       settings: "Ajustes",
       activity: "Actividad",
+      about: "Acerca de",
     },
     banner: {
       updateAvailable: "Hay una nueva versión disponible.",
@@ -284,6 +303,7 @@ const translations = {
     table: {
       gameVersion: "Versión del juego",
       account: "Cuenta",
+      accountN: "Cuenta {n}",
       size: "Tamaño",
       lastSaved: "Último guardado",
       upload: "Subida",
@@ -352,6 +372,13 @@ const translations = {
       waitWoW: "La limpieza espera a que cierres World of Warcraft",
       waitImport: "La limpieza espera a que wowcensus.io añada este guardado",
     },
+    about: {
+      appTitle: "En la aplicación",
+      privacyTitle: "Privacidad",
+      libs: "Esta aplicación está construida con las siguientes bibliotecas: Wails V3, Go, {webview}, @wailsio/runtime y Vite.",
+      privacy: "No recopilamos información personal, datos de la cuenta ni información que identifique tu dispositivo. La aplicación solo transmite los datos necesarios para su funcionamiento previsto y usa un identificador de dispositivo aleatorio para organizar las subidas.",
+      consent: "Al activar las subidas, reconoces y aceptas la recopilación, transmisión, almacenamiento y tratamiento de datos relacionados con el juego para prestar y mejorar los servicios de WoWCensus, incluida la generación de estadísticas y análisis agregados. Solo se recopilan los datos necesarios para estos fines. Puedes retirar tu consentimiento en cualquier momento desactivando las subidas.",
+    },
     editions: {
       retail: "Retail",
       classic_era: "Era clásica",
@@ -374,6 +401,7 @@ const translations = {
       status: "Status",
       settings: "Einstellungen",
       activity: "Aktivität",
+      about: "Info",
     },
     banner: {
       updateAvailable: "Eine neue Version ist verfügbar.",
@@ -406,6 +434,7 @@ const translations = {
     table: {
       gameVersion: "Spielversion",
       account: "Account",
+      accountN: "Account {n}",
       size: "Größe",
       lastSaved: "Zuletzt gespeichert",
       upload: "Upload",
@@ -474,6 +503,13 @@ const translations = {
       waitWoW: "Das Aufräumen wartet, bis World of Warcraft geschlossen ist",
       waitImport: "Das Aufräumen wartet, bis wowcensus.io diese Speicherung übernommen hat",
     },
+    about: {
+      appTitle: "In der App",
+      privacyTitle: "Datenschutz",
+      libs: "Diese Anwendung basiert auf den folgenden Bibliotheken: Wails V3, Go, {webview}, @wailsio/runtime und Vite.",
+      privacy: "Wir erheben keine personenbezogenen Daten, keine Accountdaten und keine Informationen, die dein Gerät identifizieren. Die App überträgt nur die für ihre Funktion nötigen Daten und verwendet eine zufällige Gerätekennung, um Uploads zuzuordnen.",
+      consent: "Wenn du Uploads aktivierst, nimmst du zur Kenntnis und willigst ein, dass spielbezogene Daten erhoben, übertragen, gespeichert und verarbeitet werden, um die Dienste von WoWCensus bereitzustellen und zu verbessern, einschließlich zusammengefasster Statistiken und Auswertungen. Es werden nur die dafür nötigen Daten erhoben. Du kannst deine Einwilligung jederzeit widerrufen, indem du Uploads deaktivierst.",
+    },
     editions: {
       retail: "Retail",
       classic_era: "Classic Era",
@@ -496,6 +532,7 @@ const translations = {
       status: "État",
       settings: "Paramètres",
       activity: "Activité",
+      about: "À propos",
     },
     banner: {
       updateAvailable: "Une nouvelle version est disponible.",
@@ -528,6 +565,7 @@ const translations = {
     table: {
       gameVersion: "Version du jeu",
       account: "Compte",
+      accountN: "Compte {n}",
       size: "Taille",
       lastSaved: "Dernière sauvegarde",
       upload: "Téléversement",
@@ -596,6 +634,13 @@ const translations = {
       waitWoW: "Le nettoyage attend la fermeture de World of Warcraft",
       waitImport: "Le nettoyage attend que wowcensus.io ait ajouté cette sauvegarde",
     },
+    about: {
+      appTitle: "Dans l'application",
+      privacyTitle: "Confidentialité",
+      libs: "Cette application repose sur les bibliothèques suivantes : Wails V3, Go, {webview}, @wailsio/runtime et Vite.",
+      privacy: "Nous ne collectons aucune information personnelle, aucune donnée de compte ni aucune information permettant d'identifier votre appareil. L'application ne transmet que les données nécessaires à son fonctionnement et utilise un identifiant d'appareil aléatoire pour organiser les envois.",
+      consent: "En activant les envois, vous reconnaissez et acceptez la collecte, la transmission, le stockage et le traitement de données liées au jeu afin de fournir et d'améliorer les services WoWCensus, y compris la production de statistiques et d'analyses agrégées. Seules les données nécessaires à ces fins sont collectées. Vous pouvez retirer votre consentement à tout moment en désactivant les envois.",
+    },
     editions: {
       retail: "Retail",
       classic_era: "Classic Era",
@@ -618,6 +663,7 @@ const translations = {
       status: "Stato",
       settings: "Impostazioni",
       activity: "Attività",
+      about: "Informazioni",
     },
     banner: {
       updateAvailable: "È disponibile una nuova versione.",
@@ -650,6 +696,7 @@ const translations = {
     table: {
       gameVersion: "Versione di gioco",
       account: "Account",
+      accountN: "Account {n}",
       size: "Dimensione",
       lastSaved: "Ultimo salvataggio",
       upload: "Caricamento",
@@ -717,6 +764,13 @@ const translations = {
       doneTitle: "Copia del file originale: {backup}",
       waitWoW: "La pulizia attende la chiusura di World of Warcraft",
       waitImport: "La pulizia attende che wowcensus.io aggiunga questo salvataggio",
+    },
+    about: {
+      appTitle: "Nell'app",
+      privacyTitle: "Privacy",
+      libs: "Questa applicazione è basata sulle seguenti librerie: Wails V3, Go, {webview}, @wailsio/runtime e Vite.",
+      privacy: "Non raccogliamo informazioni personali, dati dell'account né informazioni che identificano il tuo dispositivo. L'app trasmette solo i dati necessari al suo funzionamento e usa un identificatore di dispositivo casuale per organizzare i caricamenti.",
+      consent: "Attivando i caricamenti, prendi atto e acconsenti alla raccolta, trasmissione, conservazione ed elaborazione dei dati di gioco allo scopo di fornire e migliorare i servizi WoWCensus, inclusa la produzione di statistiche e analisi aggregate. Vengono raccolti solo i dati necessari a questi scopi. Puoi revocare il consenso in qualsiasi momento disattivando i caricamenti.",
     },
     editions: {
       retail: "Retail",

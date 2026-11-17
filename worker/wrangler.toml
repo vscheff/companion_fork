@@ -7,7 +7,6 @@ routes = [{ pattern = "api.wowcensus.io", custom_domain = true }]
 [vars]
 MAX_ZIP_BYTES = "67108864"
 MAX_LUA_BYTES = "268435456"
-REGISTRATIONS_PER_IP_PER_DAY = "10"
 
 [[r2_buckets]]
 binding = "UPLOADS"
@@ -28,3 +27,8 @@ simple = { limit = 30, period = 60 }
 name = "DEVICE_LIMITER"
 namespace_id = "1002"
 simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "REGISTRATION_LIMITER"
+namespace_id = "1003"
+simple = { limit = 3, period = 60 }

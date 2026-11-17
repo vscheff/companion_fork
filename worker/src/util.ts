@@ -3,10 +3,9 @@ export interface Env {
   DB: D1Database;
   IP_LIMITER: RateLimit;
   DEVICE_LIMITER: RateLimit;
+  REGISTRATION_LIMITER: RateLimit;
   ADMIN_TOKEN: string;
   INGEST_TOKEN: string;
-  IP_HASH_SALT: string;
-  REGISTRATIONS_PER_IP_PER_DAY: string;
   MAX_ZIP_BYTES: string;
   MAX_LUA_BYTES: string;
 }

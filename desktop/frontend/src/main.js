@@ -36,6 +36,19 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + b.dataset.tab));
 }));
 
+const accountName = (f) => t("table.accountN", { n: f.accountNumber || 1 });
+
+const webviewName = (() => {
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) return "WebView2";
+  if (/Macintosh|Mac OS X/i.test(ua)) return "WebKit";
+  return "WebKitGTK";
+})();
+
+function renderAbout() {
+  $("#about-libs").textContent = t("about.libs", { webview: webviewName });
+}
+
 let installing = false;
 let lastStatus = null;
 
@@ -157,7 +170,7 @@ function renderStatus(s) {
   $("#files-table").hidden = files.length === 0;
   $("#no-files").hidden = files.length > 0 || !scanned;
   $("#files").innerHTML = files.map((f) => `<tr title="${esc(f.path)}">
-      <td>${esc(getEditionName(f.edition))}</td><td>${esc(f.account)}</td>
+      <td>${esc(getEditionName(f.edition))}</td><td>${esc(accountName(f))}</td>
       <td>${mb(f.bytes)}${cleanupNote(f)}</td><td>${when(f.modTime)}</td><td>${uploadCell(f, s.autoUpload)}</td></tr>`).join("");
   const addonFiles = s.addonFiles || [];
   const addonNames = {auctionator: "Auctionator", journalator: "Journalator", tsm: "TradeSkillMaster", dungeonjournal: "Dungeon Journal"};
@@ -168,13 +181,14 @@ function renderStatus(s) {
   renderAddon(s.addon);
   renderUpdate(s.update);
   renderVersion();
+  renderAbout();
   const log = s.log || [];
   $("#log").innerHTML = log.slice().reverse().map((l) =>
     `<li class="${esc(l.level)}"><time>${when(l.at)}</time> ${esc(l.message)}</li>`).join("");
 }
 
-// Initialize language from stored setting or system default
 setLanguage(getStoredLanguage() || "auto");
+renderAbout();
 
 Events.On("status", (ev) => renderStatus(ev.data));
 CompanionService.GetStatus().then(renderStatus);
@@ -324,7 +338,7 @@ $("#btn-detect").onclick = async () => {
   const roots = form.elements.wowRoots.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   const found = await CompanionService.DetectInstalls(roots);
   $("#detected").innerHTML = found.length
-    ? found.map((f) => `<li><b>${esc(getEditionName(f.edition))}</b> · ${esc(f.account)}<br><small>${esc(f.path)}</small></li>`).join("")
+    ? found.map((f) => `<li><b>${esc(getEditionName(f.edition))}</b> · ${esc(accountName(f))}<br><small>${esc(f.path)}</small></li>`).join("")
     : `<li class='muted'>${t("settings.noSavesInFolders")}</li>`;
 };
 

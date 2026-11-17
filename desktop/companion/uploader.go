@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -46,7 +45,7 @@ func (e *APIError) Error() string {
 }
 
 func (c *Client) Register(ctx context.Context) (string, string, error) {
-	body, err := json.Marshal(map[string]string{"appVersion": AppVersion, "os": runtime.GOOS, "clientId": c.ClientID})
+	body, err := json.Marshal(map[string]string{"appVersion": AppVersion, "clientId": c.ClientID})
 	if err != nil {
 		return "", "", err
 	}

@@ -83,7 +83,7 @@ func (s *CompanionService) SaveSettings(in Settings) (Settings, error) {
 func (s *CompanionService) GetStatus() companion.Status { return s.engine.Status() }
 
 func (s *CompanionService) DetectInstalls(extraRoots []string) []companion.SavedVarFile {
-	return companion.DiscoverWithDefaults(extraRoots)
+	return companion.PublicFiles(companion.DiscoverWithDefaults(extraRoots))
 }
 
 func (s *CompanionService) ExtraAddons() []companion.ExtraAddon {

@@ -54,7 +54,7 @@ async function enrol(req: Request, env: Env): Promise<Response> {
   const denied = await requireSecret(req, env.ADMIN_TOKEN);
   if (denied) return denied;
   const body = (await req.json().catch(() => ({}))) as { label?: string };
-  return json(await createDevice(env, (body.label ?? "").slice(0, 100) || null, null), 201);
+  return json(await createDevice(env, (body.label ?? "").slice(0, 100) || null), 201);
 }
 
 async function revoke(req: Request, env: Env, deviceId: string): Promise<Response> {

@@ -17,14 +17,11 @@ hooks.deregister();
 function registrationEnv(inserts) {
   return {
     IP_LIMITER: { limit: async () => ({ success: true }) },
-    IP_HASH_SALT: "test salt",
-    REGISTRATIONS_PER_IP_PER_DAY: "10",
+    REGISTRATION_LIMITER: { limit: async () => ({ success: true }) },
     DB: {
       prepare(sql) {
-        if (sql.startsWith("SELECT count(*)")) {
-          return { bind: () => ({ first: async () => ({ n: 0 }) }) };
-        }
         assert.match(sql, /^INSERT INTO devices/);
+        assert.doesNotMatch(sql, /ip/i);
         return { bind: (...values) => ({ run: async () => inserts.push(values) }) };
       },
     },
@@ -59,8 +56,9 @@ test("registers a device using the desktop client's fields", async () => {
   assert.match(token, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0][0], deviceId);
-  assert.equal(inserts[0][2], "companion 0.1.12 windows");
-  assert.equal(inserts[0][5], clientId);
+  assert.equal(inserts[0][2], "companion 0.1.12");
+  assert.equal(inserts[0].length, 5);
+  assert.equal(inserts[0][4], clientId);
 });
 
 test("accepts an object with optional fields omitted at the 4 KiB limit", async () => {
@@ -70,7 +68,7 @@ test("accepts an object with optional fields omitted at the 4 KiB limit", async 
   assert.equal(response.status, 201);
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0][2], "companion");
-  assert.equal(inserts[0][5], null);
+  assert.equal(inserts[0][4], null);
 });
 
 for (const [name, body] of [
@@ -114,12 +112,21 @@ for (const contentLength of [undefined, "4097", "10"]) {
   });
 }
 
+test("rejects registrations over the network rate limit without storing anything", async () => {
+  const inserts = [];
+  const env = registrationEnv(inserts);
+  env.REGISTRATION_LIMITER = { limit: async () => ({ success: false }) };
+  const response = await register("{}", env);
+  await assertError(response, 429, "Too many registrations from this network");
+  assert.deepEqual(inserts, []);
+});
+
 test("returns a generic 500 after an asynchronous registration failure", async (t) => {
   t.mock.method(console, "error", () => {});
   const env = registrationEnv([]);
   env.DB = {
     prepare: () => ({
-      bind: () => ({ first: () => Promise.reject(new Error("private database details")) }),
+      bind: () => ({ run: () => Promise.reject(new Error("private database details")) }),
     }),
   };
   const response = await register("{}", env);

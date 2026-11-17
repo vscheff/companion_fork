@@ -18,6 +18,7 @@
   <button role="tab" data-tab="status" class="active" data-i18n="tabs.status">Status</button>
   <button role="tab" data-tab="settings" data-i18n="tabs.settings">Settings</button>
   <button role="tab" data-tab="activity" data-i18n="tabs.activity">Activity</button>
+  <button role="tab" data-tab="about" data-i18n="tabs.about">About</button>
 </nav>
 
 <main>
@@ -127,6 +128,18 @@
 
   <section id="tab-activity" class="panel">
     <ol id="log" class="log"></ol>
+  </section>
+
+  <section id="tab-about" class="panel">
+    <fieldset>
+      <legend data-i18n="about.appTitle">In the app</legend>
+      <p id="about-libs"></p>
+    </fieldset>
+    <fieldset>
+      <legend data-i18n="about.privacyTitle">Privacy</legend>
+      <p data-i18n="about.privacy"></p>
+      <p data-i18n="about.consent"></p>
+    </fieldset>
   </section>
 </main>
 
