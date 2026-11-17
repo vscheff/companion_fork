@@ -8,26 +8,26 @@ export default {
     const path = url.pathname.replace(/\/+$/, "") || "/";
     try {
       if (path === "/v1/health" && req.method === "GET") return json({ ok: true });
-      if (path === "/v1/devices" && req.method === "POST") return registerDevice(req, env);
-      if (path === "/v1/uploads") return req.method === "PUT" ? handleUpload(req, env, ctx) : fail(405, "Use PUT");
+      if (path === "/v1/devices" && req.method === "POST") return await registerDevice(req, env);
+      if (path === "/v1/uploads") return req.method === "PUT" ? await handleUpload(req, env, ctx) : fail(405, "Use PUT");
 
       let m = /^\/v1\/uploads\/([0-9a-f-]{36})$/.exec(path);
-      if (m && req.method === "GET") return handleReceipt(req, env, ctx, m[1]);
+      if (m && req.method === "GET") return await handleReceipt(req, env, ctx, m[1]);
 
-      if (path === "/v1/ingest/ack" && req.method === "POST") return ingestAck(req, env);
+      if (path === "/v1/ingest/ack" && req.method === "POST") return await ingestAck(req, env);
       if (path === "/v1/ingest/pending" && req.method === "GET") {
         const denied = await requireSecret(req, env.INGEST_TOKEN);
-        return denied ?? listPending(env, Number(url.searchParams.get("limit") ?? 50), url.searchParams.get("kind"));
+        return denied ?? await listPending(env, Number(url.searchParams.get("limit") ?? 50), url.searchParams.get("kind"));
       }
       m = /^\/v1\/ingest\/object\/([0-9a-f-]{36})$/.exec(path);
       if (m && req.method === "GET") {
         const denied = await requireSecret(req, env.INGEST_TOKEN);
-        return denied ?? getObject(env, m[1]);
+        return denied ?? await getObject(env, m[1]);
       }
 
-      if (path === "/v1/admin/devices" && req.method === "POST") return enrol(req, env);
+      if (path === "/v1/admin/devices" && req.method === "POST") return await enrol(req, env);
       m = /^\/v1\/admin\/devices\/(dev_[0-9a-f]{20})$/.exec(path);
-      if (m && req.method === "DELETE") return revoke(req, env, m[1]);
+      if (m && req.method === "DELETE") return await revoke(req, env, m[1]);
 
       return fail(404, "Not found");
     } catch (err) {

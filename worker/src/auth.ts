@@ -1,5 +1,8 @@
 import { bearer, fail, json, now, randomToken, secretEquals, sha256Hex, type Env } from "./util";
 
+const MAX_REGISTRATION_BYTES = 4 * 1024;
+const INVALID_REGISTRATION_BODY = "Registration body must be a JSON object";
+
 export type Device = { id: string };
 
 export async function authenticateDevice(req: Request, env: Env, ctx: ExecutionContext): Promise<Device | Response> {
@@ -47,7 +50,36 @@ export async function registerDevice(req: Request, env: Env): Promise<Response> 
   if ((recent?.n ?? 0) >= Number(env.REGISTRATIONS_PER_IP_PER_DAY)) {
     return fail(429, "Too many registrations from this network today", { "retry-after": "3600" });
   }
-  const body = (await req.json().catch(() => ({}))) as { appVersion?: unknown; os?: unknown; clientId?: unknown };
+  const reader = req.body?.getReader();
+  if (!reader) return fail(400, INVALID_REGISTRATION_BODY);
+
+  const bytes = new Uint8Array(MAX_REGISTRATION_BYTES);
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (size + value.byteLength > MAX_REGISTRATION_BYTES) {
+        void reader.cancel().catch(() => {});
+        return fail(413, "Registration body too large");
+      }
+      bytes.set(value, size);
+      size += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes.subarray(0, size)));
+  } catch {
+    return fail(400, INVALID_REGISTRATION_BODY);
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return fail(400, INVALID_REGISTRATION_BODY);
+  }
+  const body = parsed as { appVersion?: unknown; os?: unknown; clientId?: unknown };
   const clientId = typeof body.clientId === "string" && /^[0-9a-f]{32}$/.test(body.clientId) ? body.clientId : null;
   const clean = (v: unknown) => (typeof v === "string" ? v.replace(/[^\w.+-]/g, "").slice(0, 40) : "");
   const label = ["companion", clean(body.appVersion), clean(body.os)].filter(Boolean).join(" ");
