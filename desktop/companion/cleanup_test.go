@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -283,9 +285,83 @@ func TestCleanSavedVariablesRefusesWhatItCannotRead(t *testing.T) {
 	}
 }
 
+func TestReadPackedField(t *testing.T) {
+	cases := []struct {
+		name, chunk string
+		cursor      int
+		want        string
+		wantNext    int
+		wantErr     bool
+	}{
+		{name: "followed by another field", chunk: "3:abc1:x", want: "abc", wantNext: 5},
+		{name: "empty field", chunk: "0:", wantNext: 2},
+		{name: "remaining bytes", chunk: "1:x2:é", cursor: 3, want: "é", wantNext: len("1:x2:é")},
+		{name: "truncated field", chunk: "6:abc", wantErr: true},
+		{name: "one byte too long", chunk: "4:abc", wantErr: true},
+		{name: "missing delimiter", chunk: "3abc", wantErr: true},
+		{name: "missing length", chunk: ":abc", wantErr: true},
+		{name: "negative length", chunk: "-1:abc", wantErr: true},
+		{name: "non-numeric length", chunk: "x:abc", wantErr: true},
+		{name: "unrepresentable length", chunk: strings.Repeat("9", 32) + ":", wantErr: true},
+		{name: "end offset overflow", chunk: strconv.Itoa(math.MaxInt) + ":", wantErr: true},
+		{name: "negative cursor", chunk: "1:x", cursor: -1, wantErr: true},
+		{name: "cursor past end", chunk: "1:x", cursor: 4, wantErr: true},
+		{name: "cursor at end", chunk: "1:x", cursor: 3, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, next, err := readPackedField(tc.chunk, tc.cursor)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got %q at next cursor %d", got, next)
+				}
+				return
+			}
+			if err != nil || got != tc.want || next != tc.wantNext {
+				t.Fatalf("got %q, %d, %v; want %q, %d, nil", got, next, err, tc.want, tc.wantNext)
+			}
+		})
+	}
+}
+
+func TestParseSavedVariablesTableDepth(t *testing.T) {
+	belowLimit := strings.Repeat("{", maxLuaTableDepth-1) + "true" + strings.Repeat("}", maxLuaTableDepth-1)
+	atLimit := "{" + belowLimit + ", " + belowLimit + "}"
+	keysAtLimit := strings.Repeat("{[", maxLuaTableDepth-1) + "{}" + strings.Repeat("] = true}", maxLuaTableDepth-1)
+	cases := []struct {
+		name, value string
+		wantErr     bool
+	}{
+		{"shallow named tables", "{ settings = { enabled = true } }", false},
+		{"below limit", belowLimit, false},
+		{"sibling tables at limit", atLimit, false},
+		{"table value above limit", "{" + atLimit + "}", true},
+		{"table keys at limit", keysAtLimit, false},
+		{"table key above limit", "{[" + keysAtLimit + "] = true}", true},
+		{"deep unfinished table", strings.Repeat("{", 4096), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assigns, err := parseSavedVariables([]byte("WoWCensusDB = " + tc.value))
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "table nesting exceeds") {
+					t.Fatalf("want a table nesting error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(assigns) != 1 || assigns[0].Name != cleanupDBName || assigns[0].Value.Kind != luaTable {
+				t.Fatalf("expected a WoWCensusDB table, got %+v", assigns)
+			}
+		})
+	}
+}
+
 func TestLuaQuoteRoundTrips(t *testing.T) {
 	s := "a\"b\\c\nd\re\x00f\x01g\x7fh 한국어 ü"
-	v, err := (&luaParser{src: []byte(luaQuote(s))}).value()
+	v, err := (&luaParser{src: []byte(luaQuote(s))}).value(0)
 	if err != nil || v.Str != s {
 		t.Fatalf("round trip %q -> %q (%v)", s, v.Str, err)
 	}
@@ -335,6 +411,60 @@ func (s *importServer) handler() http.Handler {
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": st})
 	})
 	return mux
+}
+
+func TestEngineSkipsCleanupOfMalformedSavedVariables(t *testing.T) {
+	cases := []struct{ name, src, wantErr string }{
+		{"damaged packed", `WoWCensusDB = { realms = { r = { population = {
+			samples = {{t = 1}, {t = 2}}, charactersPacked = {"MLC1", "5:abc"},
+		} } } }`, "packed characters are damaged"},
+		{"excess nesting", "WoWCensusDB = " + strings.Repeat("{", maxLuaTableDepth+1), "table nesting exceeds"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Meet the 1 MB cleanup threshold.
+			src := tc.src + strings.Repeat(" ", 1<<20)
+			f := SavedVarFile{Path: makeInstall(t, t.TempDir(), "_forever_", "ACC", src), Edition: "forever", Account: "ACC"}
+			e, err := NewEngine(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.discover = func([]string) []SavedVarFile { return []SavedVarFile{f} }
+			e.discoverEditions = func([]string) []string { return nil }
+			e.wowRunning = func() (bool, error) { return false, nil }
+			cfg := e.Config()
+			cfg.AutoClean, cfg.CleanAboveMB = true, 1
+			if err := e.UpdateConfig(cfg); err != nil {
+				t.Fatal(err)
+			}
+			snap, err := TakeSnapshot(f, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := e.state.PutReceipt(Receipt{SourceID: e.state.SourceID(f.Path), SHA256: snap.SHA256, Status: "imported", At: snap.TakenAt}); err != nil {
+				t.Fatal(err)
+			}
+
+			e.RunOnce(context.Background(), false, false)
+			out, err := os.ReadFile(f.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(out) != src {
+				t.Fatal("failed cleanup changed the original file")
+			}
+			if backups, err := ListBackups(cfg.ResolvedBackupDir(e.AppDir())); err != nil || len(backups) != 0 {
+				t.Fatalf("unexpected cleanup backups: %v (%v)", backups, err)
+			}
+			logs := e.Status().Log
+			for _, log := range logs {
+				if log.Level == "warn" && strings.HasPrefix(log.Message, "Cleanup skipped for ") && strings.Contains(log.Message, tc.wantErr) {
+					return
+				}
+			}
+			t.Fatalf("want a cleanup warning containing %q, got %+v", tc.wantErr, logs)
+		})
+	}
 }
 
 func TestEngineCleansOnlyAfterImportWhileWoWIsClosed(t *testing.T) {
