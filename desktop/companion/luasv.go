@@ -114,6 +114,9 @@ func (v *luaValue) Array() ([]*luaEntry, bool) {
 	return explicit, true
 }
 
+// The outermost Lua table counts as level one.
+const maxLuaTableDepth = 64
+
 type luaParser struct {
 	src []byte
 	pos int
@@ -140,7 +143,7 @@ func parseSavedVariables(src []byte) ([]luaAssignment, error) {
 		if !p.eat('=') {
 			return nil, p.errorf("expected = after %s", name)
 		}
-		v, err := p.value()
+		v, err := p.value(0)
 		if err != nil {
 			return nil, err
 		}
@@ -244,13 +247,13 @@ func (p *luaParser) ident() string {
 	return string(p.src[start:p.pos])
 }
 
-func (p *luaParser) value() (*luaValue, error) {
+func (p *luaParser) value(depth int) (*luaValue, error) {
 	p.skip()
 	start := p.pos
 	c := p.peek()
 	switch {
 	case c == '{':
-		return p.table()
+		return p.table(depth + 1)
 	case c == '"' || c == '\'':
 		s, err := p.quoted()
 		if err != nil {
@@ -422,7 +425,10 @@ func (p *luaParser) quoted() (string, error) {
 	return "", p.errorf("unfinished string")
 }
 
-func (p *luaParser) table() (*luaValue, error) {
+func (p *luaParser) table(depth int) (*luaValue, error) {
+	if depth > maxLuaTableDepth {
+		return nil, p.errorf("table nesting exceeds %d levels", maxLuaTableDepth)
+	}
 	t := &luaValue{Kind: luaTable, Start: p.pos}
 	p.pos++
 	index := 0
@@ -439,7 +445,7 @@ func (p *luaParser) table() (*luaValue, error) {
 		switch c := p.peek(); {
 		case c == '[' && !p.atLongString():
 			p.pos++
-			k, err := p.value()
+			k, err := p.value(depth)
 			if err != nil {
 				return nil, err
 			}
@@ -459,7 +465,7 @@ func (p *luaParser) table() (*luaValue, error) {
 			p.skip()
 			p.eat('=')
 		}
-		v, err := p.value()
+		v, err := p.value(depth)
 		if err != nil {
 			return nil, err
 		}

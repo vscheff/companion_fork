@@ -261,16 +261,20 @@ func (c *cleaner) packed(packed *luaValue) error {
 }
 
 func readPackedField(chunk string, cursor int) (string, int, error) {
+	if cursor < 0 || cursor > len(chunk) {
+		return "", 0, errors.New("packed character cursor is out of bounds")
+	}
 	colon := strings.IndexByte(chunk[cursor:], ':')
 	if colon < 0 {
 		return "", 0, errors.New("packed characters are truncated")
 	}
 	size, err := strconv.Atoi(chunk[cursor : cursor+colon])
 	start := cursor + colon + 1
-	if err != nil || size < 0 || start+size > len(chunk) {
+	if err != nil || size < 0 || size > len(chunk)-start {
 		return "", 0, errors.New("packed characters are damaged")
 	}
-	return chunk[start : start+size], start + size, nil
+	end := start + size
+	return chunk[start:end], end, nil
 }
 
 func cleanPackedChunk(chunk string, cutoff, cutoffDay float64, res *CleanupResult) (string, bool, error) {
