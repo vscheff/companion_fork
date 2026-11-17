@@ -77,3 +77,6 @@ main { padding-bottom: 28px; }
 .update-row > * { margin: 0; }
 #tab-about p { margin: 0 0 10px; line-height: 1.5; }
 #tab-about p:last-child { margin-bottom: 0; }
+.contributors { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+#tab-about a { color: var(--accent); text-decoration: none; }
+#tab-about a:hover { text-decoration: underline; }

@@ -112,6 +112,7 @@ const translations = {
     },
     about: {
       appTitle: "In the app",
+      contributorsTitle: "Contributors",
       privacyTitle: "Privacy",
       libs: "This application is built on the following libraries: Wails V3, Go, {webview}, @wailsio/runtime, and Vite.",
       privacy: "We do not collect personal information, account details, or identifying device information. The app only transmits the data necessary for its intended functionality, using a randomized device identifier to organize uploads.",
@@ -243,6 +244,7 @@ const translations = {
     },
     about: {
       appTitle: "앱",
+      contributorsTitle: "기여자",
       privacyTitle: "개인정보",
       libs: "이 애플리케이션은 다음 라이브러리로 만들어졌습니다: Wails V3, Go, {webview}, @wailsio/runtime, Vite.",
       privacy: "개인 정보, 계정 정보, 기기를 식별할 수 있는 정보는 수집하지 않습니다. 앱은 의도된 기능에 필요한 데이터만 전송하며, 업로드를 정리하기 위해 임의로 생성된 기기 식별자를 사용합니다.",
@@ -374,6 +376,7 @@ const translations = {
     },
     about: {
       appTitle: "En la aplicación",
+      contributorsTitle: "Colaboradores",
       privacyTitle: "Privacidad",
       libs: "Esta aplicación está construida con las siguientes bibliotecas: Wails V3, Go, {webview}, @wailsio/runtime y Vite.",
       privacy: "No recopilamos información personal, datos de la cuenta ni información que identifique tu dispositivo. La aplicación solo transmite los datos necesarios para su funcionamiento previsto y usa un identificador de dispositivo aleatorio para organizar las subidas.",
@@ -505,6 +508,7 @@ const translations = {
     },
     about: {
       appTitle: "In der App",
+      contributorsTitle: "Mitwirkende",
       privacyTitle: "Datenschutz",
       libs: "Diese Anwendung basiert auf den folgenden Bibliotheken: Wails V3, Go, {webview}, @wailsio/runtime und Vite.",
       privacy: "Wir erheben keine personenbezogenen Daten, keine Accountdaten und keine Informationen, die dein Gerät identifizieren. Die App überträgt nur die für ihre Funktion nötigen Daten und verwendet eine zufällige Gerätekennung, um Uploads zuzuordnen.",
@@ -636,6 +640,7 @@ const translations = {
     },
     about: {
       appTitle: "Dans l'application",
+      contributorsTitle: "Contributeurs",
       privacyTitle: "Confidentialité",
       libs: "Cette application repose sur les bibliothèques suivantes : Wails V3, Go, {webview}, @wailsio/runtime et Vite.",
       privacy: "Nous ne collectons aucune information personnelle, aucune donnée de compte ni aucune information permettant d'identifier votre appareil. L'application ne transmet que les données nécessaires à son fonctionnement et utilise un identifiant d'appareil aléatoire pour organiser les envois.",
@@ -767,6 +772,7 @@ const translations = {
     },
     about: {
       appTitle: "Nell'app",
+      contributorsTitle: "Collaboratori",
       privacyTitle: "Privacy",
       libs: "Questa applicazione è basata sulle seguenti librerie: Wails V3, Go, {webview}, @wailsio/runtime e Vite.",
       privacy: "Non raccogliamo informazioni personali, dati dell'account né informazioni che identificano il tuo dispositivo. L'app trasmette solo i dati necessari al suo funzionamento e usa un identificatore di dispositivo casuale per organizzare i caricamenti.",

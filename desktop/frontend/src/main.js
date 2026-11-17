@@ -1,4 +1,4 @@
-import {Events} from "@wailsio/runtime";
+import {Browser, Events} from "@wailsio/runtime";
 import {CompanionService} from "../bindings/wowcensuscompanion";
 import {
   t,
@@ -44,6 +44,11 @@ const webviewName = (() => {
   if (/Macintosh|Mac OS X/i.test(ua)) return "WebKit";
   return "WebKitGTK";
 })();
+
+document.querySelectorAll("a.external").forEach((a) => a.addEventListener("click", (e) => {
+  e.preventDefault();
+  Browser.OpenURL(a.href);
+}));
 
 function renderAbout() {
   $("#about-libs").textContent = t("about.libs", { webview: webviewName });
