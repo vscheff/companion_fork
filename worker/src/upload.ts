@@ -68,8 +68,8 @@ export async function handleUpload(req: Request, env: Env, ctx: ExecutionContext
     return json({ status: existing.status, receiptId: existing.id, duplicate: true });
   }
 
-  const owner = clientId ?? device.id;
-  const objectKey = `incoming/${owner}/${owner}-${sourceId.slice(0, 16)}-${sha256.slice(0, 16)}.zip`;
+  const id = crypto.randomUUID();
+  const objectKey = `incoming/${device.id}/${id}.zip`;
   let stored: R2Object | null;
   try {
     stored = await env.UPLOADS.put(objectKey, req.body, {
@@ -85,19 +85,26 @@ export async function handleUpload(req: Request, env: Env, ctx: ExecutionContext
     return fail(422, "Stored size does not match Content-Length");
   }
 
-  const id = crypto.randomUUID();
   const at = now();
-  const ins = await env.DB.prepare(
-    `INSERT INTO receipts (id, device_id, client_id, source_id, sha256, zip_sha256, object_key, zip_bytes, lua_bytes, edition, app_version, kind, mode, addon, status, created_at, queued_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?) ON CONFLICT (device_id, source_id, sha256) DO NOTHING`,
-  )
-    .bind(id, device.id, clientId, sourceId, sha256, zipSha256, objectKey, zipBytes, luaBytes, edition, appVersion, kind, mode, addon, at, at)
-    .run();
+  let ins: D1Result;
+  try {
+    ins = await env.DB.prepare(
+      `INSERT INTO receipts (id, device_id, client_id, source_id, sha256, zip_sha256, object_key, zip_bytes, lua_bytes, edition, app_version, kind, mode, addon, status, created_at, queued_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?) ON CONFLICT (device_id, source_id, sha256) DO NOTHING`,
+    )
+      .bind(id, device.id, clientId, sourceId, sha256, zipSha256, objectKey, zipBytes, luaBytes, edition, appVersion, kind, mode, addon, at, at)
+      .run();
+  } catch (err) {
+    ctx.waitUntil(env.UPLOADS.delete(objectKey));
+    throw err;
+  }
   if (!ins.meta.changes) {
+    ctx.waitUntil(env.UPLOADS.delete(objectKey));
     const winner = await env.DB.prepare("SELECT id, status FROM receipts WHERE device_id = ? AND source_id = ? AND sha256 = ?")
       .bind(device.id, sourceId, sha256)
       .first<ReceiptRow>();
     if (winner) return json({ status: winner.status, receiptId: winner.id, duplicate: true });
+    return fail(409, "Upload conflicted with another attempt; try again");
   }
   return json({ status: "queued", receiptId: id, duplicate: false }, 201);
 }
