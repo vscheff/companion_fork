@@ -196,6 +196,7 @@ type fakeServer struct {
 	failPut                    atomic.Bool
 	modes                      []string
 	kinds                      []string
+	headers                    []http.Header
 	bodies                     [][]byte
 }
 
@@ -283,14 +284,15 @@ func (fs *fakeServer) handler(t *testing.T) http.Handler {
 			len(r.Header.Get("X-WoWCensus-Source-Id")) != 64 || len(r.Header.Get("X-WoWCensus-Sha256")) != 64 {
 			t.Errorf("bad upload: method %s, %d bytes, headers %v", r.Method, len(body), r.Header)
 		}
-		fs.completes.Add(1)
+		n := fs.completes.Add(1)
 		fs.mu.Lock()
 		fs.modes = append(fs.modes, r.Header.Get("X-WoWCensus-Mode"))
 		fs.kinds = append(fs.kinds, r.Header.Get("X-WoWCensus-Kind"))
+		fs.headers = append(fs.headers, r.Header.Clone())
 		fs.bodies = append(fs.bodies, body)
 		fs.mu.Unlock()
 		w.WriteHeader(201)
-		_ = json.NewEncoder(w).Encode(uploadResponse{Status: "queued", ReceiptID: "00000000-0000-0000-0000-000000000001"})
+		_ = json.NewEncoder(w).Encode(uploadResponse{Status: "queued", ReceiptID: strconv.Itoa(int(n))})
 	})
 	return mux
 }

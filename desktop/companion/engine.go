@@ -98,7 +98,10 @@ type Engine struct {
 	uploadPause time.Time
 }
 
-var errUploadPaused = errors.New("waiting for the server's upload limit")
+var (
+	errUploadPaused          = errors.New("waiting for the server's upload limit")
+	errUploadSettingsChanged = errors.New("upload settings changed")
+)
 
 const maxLog = 200
 
@@ -159,8 +162,19 @@ func (e *Engine) Config() Config {
 }
 
 func (e *Engine) UpdateConfig(c Config) error {
-	old := e.Config()
 	c.Normalize()
+	if err := e.saveSettings(c); err != nil {
+		return err
+	}
+	e.logf("info", "Settings saved (automatic uploads %s, automatic cleanup %s)", onOff(c.AutoUpload), onOff(c.AutoClean))
+	e.Trigger(actScan)
+	return nil
+}
+
+func (e *Engine) saveSettings(c Config) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	old := e.cfg
 	c.DeviceID, c.DeviceToken = old.DeviceID, old.DeviceToken
 	if c.ServerURL != old.ServerURL {
 		c.DeviceID, c.DeviceToken = "", ""
@@ -179,48 +193,48 @@ func (e *Engine) UpdateConfig(c Config) error {
 	if c.ServerURL != old.ServerURL {
 		_ = e.state.ClearFailures()
 	}
-	e.mu.Lock()
 	e.cfg = c
 	e.status.AutoUpload = c.AutoUpload
-	e.mu.Unlock()
 	if c.AutoClean != old.AutoClean || c.CleanKeepDays != old.CleanKeepDays {
-		e.mu.Lock()
 		e.cleanChecked = map[string]cleanCheck{}
-		e.mu.Unlock()
 	}
-	e.logf("info", "Settings saved (automatic uploads %s, automatic cleanup %s)", onOff(c.AutoUpload), onOff(c.AutoClean))
-	e.Trigger(actScan)
 	return nil
 }
 
-func (e *Engine) setDevice(id, token string) error {
-	c := e.Config()
+func (e *Engine) setDevice(serverURL, id, token string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	c := e.cfg
+	if c.ServerURL != serverURL {
+		return errUploadSettingsChanged
+	}
 	c.DeviceID, c.DeviceToken = id, token
 	if err := SaveConfig(e.appDir, c); err != nil {
 		return err
 	}
-	e.mu.Lock()
-	e.cfg.DeviceID, e.cfg.DeviceToken = id, token
-	e.mu.Unlock()
+	e.cfg = c
 	return nil
 }
 
-func (e *Engine) ensureDevice(ctx context.Context) (string, error) {
+func (e *Engine) ensureDevice(ctx context.Context, serverURL string) (string, string, error) {
 	cfg := e.Config()
+	if cfg.ServerURL != serverURL {
+		return "", "", errUploadSettingsChanged
+	}
 	if cfg.DeviceToken != "" {
-		return cfg.DeviceToken, nil
+		return cfg.DeviceID, cfg.DeviceToken, nil
 	}
 	c := e.newClient(cfg.ServerURL, "")
 	c.ClientID = e.state.ClientID()
 	id, token, err := c.Register(ctx)
 	if err != nil {
-		return "", fmt.Errorf("registering this computer: %w", err)
+		return "", "", fmt.Errorf("registering this computer: %w", err)
 	}
-	if err := e.setDevice(id, token); err != nil {
-		return "", err
+	if err := e.setDevice(serverURL, id, token); err != nil {
+		return "", "", err
 	}
 	e.logf("info", "Registered this computer with %s (%s)", cfg.ServerURL, id)
-	return token, nil
+	return id, token, nil
 }
 
 func onOff(b bool) string {
@@ -337,15 +351,14 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 		if !changed {
 			fs.SHA256 = seen.SHA256
 		}
-		_, hasReceipt := e.state.Receipt(fs.SourceID, fs.SHA256)
-		fail, inBackoff := e.state.Backoff(fs.SourceID, fs.SHA256, now)
-		wantUpload := (cfg.AutoUpload || forceUpload) && cfg.ServerURL != "" &&
-			(changed || !hasReceipt) && (forceUpload || !inBackoff)
+		uploadCfg := e.Config()
+		_, checked := e.state.CensusResult(fs.SourceID, censusCheckpointFor(uploadCfg, fs.SHA256))
+		_, inBackoff := e.state.Backoff(fs.SourceID, fs.SHA256, now)
+		wantUpload := (uploadCfg.AutoUpload || forceUpload) && uploadCfg.ServerURL != "" &&
+			!checked && (forceUpload || !inBackoff)
 		wantBackup := forceBackup || (cfg.AutoBackup && changed)
-		_, hasCursor := e.state.Cursor(fs.SourceID)
-		needCursor := hasReceipt && !hasCursor
 
-		if changed || wantUpload || wantBackup || needCursor {
+		if changed || wantUpload || wantBackup {
 			snap, err := TakeSnapshot(f, now)
 			switch {
 			case errors.Is(err, ErrUnstable):
@@ -376,32 +389,25 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 					e.logf("info", "Backup written: %s", p)
 				}
 			}
-			_, hasReceipt = e.state.Receipt(fs.SourceID, snap.SHA256)
-			if _, ok := e.state.Cursor(fs.SourceID); !ok && hasReceipt {
-				if marks, err := CensusMarks(snap.Data); err == nil {
-					_ = e.state.SetCursor(fs.SourceID, marks)
-				}
-			}
-			fail, inBackoff = e.state.Backoff(fs.SourceID, snap.SHA256, now)
-			if wantUpload && !hasReceipt && (forceUpload || !inBackoff) {
-				e.uploadCensus(ctx, cfg, snap, fs.SourceID)
-			} else if forceUpload && hasReceipt {
-				e.logf("info", "%s / %s already uploaded (same content)", f.Edition, f.AccountLabel())
+			_, inBackoff = e.state.Backoff(fs.SourceID, snap.SHA256, now)
+			if wantUpload && (forceUpload || !inBackoff) {
+				e.uploadCensus(ctx, snap, fs.SourceID, forceUpload)
 			}
 		}
 
-		if r, ok := e.state.Receipt(fs.SourceID, fs.SHA256); ok {
+		uploadCfg = e.Config()
+		if r, ok := e.state.CensusResult(fs.SourceID, censusCheckpointFor(uploadCfg, fs.SHA256)); ok {
 			fs.Uploaded = true
 			fs.LastReceipt = &r
 		} else if r, ok := e.state.LatestReceipt(fs.SourceID); ok {
 			fs.LastReceipt = &r
 		}
-		if fail, inBackoff = e.state.Backoff(fs.SourceID, fs.SHA256, e.now()); inBackoff {
+		if fail, inBackoff := e.state.Backoff(fs.SourceID, fs.SHA256, e.now()); inBackoff {
 			t := fail.NextTry
 			fs.NextRetry = &t
 			fs.LastError = fail.LastErr
 		}
-		if e.maybeClean(cfg, &fs, backupDir) {
+		if e.maybeClean(uploadCfg, &fs, backupDir) {
 			backedUp = true
 		}
 		statuses = append(statuses, fs)
@@ -418,6 +424,7 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 		e.logf("warn", "No WoWCensus.lua found to back up")
 	}
 
+	cfg = e.Config()
 	addonFiles := e.reconcileAddons(ctx, cfg, forceUpload)
 
 	if cfg.AutoUpload && cfg.DeviceToken != "" {
@@ -442,26 +449,40 @@ func (e *Engine) send(ctx context.Context, cfg Config, m Manifest, data []byte, 
 	if paused {
 		return Receipt{}, errUploadPaused
 	}
+	if !e.uploadAllowed(cfg, m) {
+		return Receipt{}, errUploadSettingsChanged
+	}
+	id, token, err := e.ensureDevice(ctx, cfg.ServerURL)
+	if err != nil {
+		return Receipt{}, err
+	}
+	destination := censusDestination(cfg.ServerURL, id)
+	if m.Kind == KindCensus {
+		if r, ok := e.state.CensusReceipt(m.SourceID, destination, m.SHA256); ok {
+			r.Duplicate = true
+			return r, nil
+		}
+	}
 	b, err := BuildBundleData(m, data)
 	if err != nil {
 		return Receipt{}, fmt.Errorf("bundle failed: %w", err)
 	}
-	what := "the whole file"
+	what := "the whole export"
 	if m.Mode == ModeSession {
 		what = fmt.Sprintf("%d new rows", m.Rows)
 	}
 	e.logf("info", "Uploading %s: %s (%s zipped)", label, what, humanBytes(int64(len(b.Zip))))
-	token, err := e.ensureDevice(ctx)
-	if err != nil {
-		return Receipt{}, err
-	}
 	c := e.newClient(cfg.ServerURL, token)
 	c.ClientID = e.state.ClientID()
+	// Settings may have changed while preparing the bundle or registering.
+	if !e.uploadAllowed(cfg, m) {
+		return Receipt{}, errUploadSettingsChanged
+	}
 	r, err := c.Upload(ctx, b)
 	if err != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
-			_ = e.setDevice("", "")
+			_ = e.setDevice(cfg.ServerURL, "", "")
 		}
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusTooManyRequests {
 			wait := max(apiErr.RetryAfter, time.Minute)
@@ -473,11 +494,26 @@ func (e *Engine) send(ctx context.Context, cfg Config, m Manifest, data []byte, 
 		}
 		return Receipt{}, err
 	}
+	if m.Kind == KindCensus {
+		r.Destination = destination
+	}
 	return r, nil
 }
 
+func (e *Engine) uploadAllowed(cfg Config, m Manifest) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if cfg.ServerURL != e.cfg.ServerURL {
+		return false
+	}
+	if m.Kind == KindAddon {
+		return e.cfg.ShareAddons[m.Addon]
+	}
+	return censusMarketConsent(cfg.ShareAddons) == censusMarketConsent(e.cfg.ShareAddons)
+}
+
 func (e *Engine) uploadFailed(sourceID, fileSHA, label string, err error) {
-	if errors.Is(err, errUploadPaused) {
+	if errors.Is(err, errUploadPaused) || errors.Is(err, errUploadSettingsChanged) {
 		return
 	}
 	_ = e.state.RecordFailure(sourceID, fileSHA, err, e.now())
@@ -487,6 +523,10 @@ func (e *Engine) uploadFailed(sourceID, fileSHA, label string, err error) {
 func (e *Engine) accept(r Receipt, fileSHA, label string) {
 	r.SHA256 = fileSHA
 	_ = e.state.PutReceipt(r)
+	e.logReceipt(r, label)
+}
+
+func (e *Engine) logReceipt(r Receipt, label string) {
 	if r.Duplicate {
 		e.logf("info", "%s: server already has this version", label)
 	} else {
@@ -504,41 +544,47 @@ func (e *Engine) coverWithLatest(sourceID, fileSHA string) bool {
 	return true
 }
 
-func (e *Engine) uploadCensus(ctx context.Context, cfg Config, snap *Snapshot, sourceID string) {
-	label := snap.File.Edition + " / " + snap.File.AccountLabel()
-	m := NewManifest(snap, sourceID)
-	data := snap.Data
-	cur, hasCursor := e.state.Cursor(sourceID)
-	var next Cursor
-	if hasCursor {
-		d, err := BuildCensusDelta(snap.Data, cur)
-		switch {
-		case err != nil:
-			e.logf("warn", "%s: couldn't pick out the new data (%v); sending the whole file", label, err)
-			next, _ = CensusMarks(snap.Data)
-		case d.Lua == nil:
-			_ = e.state.SetCursor(sourceID, d.Next)
-			if e.coverWithLatest(sourceID, snap.SHA256) {
-				e.logf("info", "%s: nothing new since the last upload", label)
-				return
-			}
-			next = d.Next
-		default:
-			m.Mode, m.Rows, next = ModeSession, d.Rows, d.Next
-			data = d.Lua
-			m.SetData(data)
-		}
-	} else {
-		next, _ = CensusMarks(snap.Data)
-	}
-	r, err := e.send(ctx, cfg, m, data, label)
-	if err != nil {
-		e.uploadFailed(sourceID, snap.SHA256, label, err)
+func (e *Engine) uploadCensus(ctx context.Context, snap *Snapshot, sourceID string, forceUpload bool) {
+	cfg := e.Config()
+	if cfg.ServerURL == "" || !(cfg.AutoUpload || forceUpload) {
 		return
 	}
-	e.accept(r, snap.SHA256, label)
-	if next.Buckets != nil {
-		_ = e.state.SetCursor(sourceID, next)
+	label := snap.File.Edition + " / " + snap.File.AccountLabel()
+	check := censusCheckpointFor(cfg, snap.SHA256)
+	if _, ok := e.state.CensusResult(sourceID, check); ok {
+		return
+	}
+	m := NewManifest(snap, sourceID)
+	cur, hasCursor := e.state.Cursor(sourceID)
+	var d Delta
+	var err error
+	if hasCursor {
+		d, err = BuildCensusDelta(snap.Data, cur, cfg.ShareAddons)
+		m.Mode, m.Rows = ModeSession, d.Rows
+	} else {
+		d, err = buildCensusFull(snap.Data, cfg.ShareAddons)
+	}
+	if err != nil {
+		e.uploadFailed(sourceID, snap.SHA256, label, fmt.Errorf("could not build a census export: %w", err))
+		return
+	}
+	var r Receipt
+	if len(d.Lua) > 0 {
+		m.SetData(d.Lua)
+		r, err = e.send(ctx, cfg, m, d.Lua, label)
+		if err != nil {
+			e.uploadFailed(sourceID, snap.SHA256, label, err)
+			return
+		}
+	}
+	if err := e.state.PutCensusResult(sourceID, check, d.Next, r); err != nil {
+		e.logf("error", "Could not save upload state for %s: %v", label, err)
+		return
+	}
+	if r.ReceiptID == "" {
+		e.logf("info", "%s: nothing new to upload", label)
+	} else {
+		e.logReceipt(r, label)
 	}
 }
 
@@ -588,7 +634,7 @@ func (e *Engine) reconcileAddons(ctx context.Context, cfg Config, forceUpload bo
 				_, hasReceipt = e.state.Receipt(fs.SourceID, snap.SHA256)
 				_, inBackoff = e.state.Backoff(fs.SourceID, snap.SHA256, now)
 				if !hasReceipt && (forceUpload || !inBackoff) {
-					e.uploadAddon(ctx, cfg, f, snap, fs.SourceID)
+					e.uploadAddon(ctx, f, snap, fs.SourceID, forceUpload)
 				}
 			}
 		}
@@ -608,7 +654,11 @@ func (e *Engine) reconcileAddons(ctx context.Context, cfg Config, forceUpload bo
 	return statuses
 }
 
-func (e *Engine) uploadAddon(ctx context.Context, cfg Config, f AddonFile, snap *Snapshot, sourceID string) {
+func (e *Engine) uploadAddon(ctx context.Context, f AddonFile, snap *Snapshot, sourceID string, forceUpload bool) {
+	cfg := e.Config()
+	if !cfg.ShareAddons[f.Addon] || cfg.ServerURL == "" || !(cfg.AutoUpload || forceUpload) {
+		return
+	}
 	label := f.Label()
 	cur, hasCursor := e.state.Cursor(sourceID)
 	d, err := BuildAddonUpload(f, snap.Data, cur)

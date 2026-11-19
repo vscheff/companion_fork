@@ -2,6 +2,8 @@ package companion
 
 import (
 	"errors"
+	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 )
@@ -11,32 +13,23 @@ const inspectDBName = "NameplateInspectDB"
 type Cursor struct {
 	Buckets map[string]float64 `json:"buckets,omitempty"`
 	Inspect float64            `json:"inspect,omitempty"`
-	Market  float64            `json:"market,omitempty"`
-	Marks   map[string]float64 `json:"marks,omitempty"`
-	Hashes  map[string]string  `json:"hashes,omitempty"`
+	// The legacy "market" watermark is ignored because it proved no per-source coverage.
+	MarketBySource map[string]float64 `json:"marketBySource,omitempty"`
+	Marks          map[string]float64 `json:"marks,omitempty"`
+	Hashes         map[string]string  `json:"hashes,omitempty"`
+	Census         *censusCheckpoint  `json:"census,omitempty"`
 }
 
 func (c Cursor) clone() Cursor {
-	out := Cursor{Inspect: c.Inspect, Market: c.Market}
-	if c.Buckets != nil {
-		out.Buckets = make(map[string]float64, len(c.Buckets))
-		for k, v := range c.Buckets {
-			out.Buckets[k] = v
-		}
+	c.Buckets = maps.Clone(c.Buckets)
+	c.MarketBySource = maps.Clone(c.MarketBySource)
+	c.Marks = maps.Clone(c.Marks)
+	c.Hashes = maps.Clone(c.Hashes)
+	if c.Census != nil {
+		checkpoint := *c.Census
+		c.Census = &checkpoint
 	}
-	if c.Marks != nil {
-		out.Marks = make(map[string]float64, len(c.Marks))
-		for k, v := range c.Marks {
-			out.Marks[k] = v
-		}
-	}
-	if c.Hashes != nil {
-		out.Hashes = make(map[string]string, len(c.Hashes))
-		for k, v := range c.Hashes {
-			out.Hashes[k] = v
-		}
-	}
-	return out
+	return c
 }
 
 var stampKeys = map[string]bool{
@@ -162,19 +155,7 @@ func (s *censusSave) marks() Cursor {
 			}
 		}
 	}
-	c.Market = newestStamp(s.db.Field("market"))
-	if t := s.db.Field("market").Field("dungeonJournal").Field("accountAt").Number(); t > c.Market {
-		c.Market = t
-	}
 	return c
-}
-
-func CensusMarks(src []byte) (Cursor, error) {
-	s, err := readCensusSave(src)
-	if err != nil {
-		return Cursor{}, err
-	}
-	return s.marks(), nil
 }
 
 type luaOut struct {
@@ -185,12 +166,8 @@ type luaOut struct {
 func (o *luaOut) raw(v *luaValue) { o.b.Write(o.src[v.Start:v.End]) }
 
 func (o *luaOut) entry(e *luaEntry) {
-	text := strings.TrimRight(string(o.src[e.Start:e.End]), " \t\r\n")
-	o.b.WriteString(text)
-	if !strings.HasSuffix(text, ",") && !strings.HasSuffix(text, ";") {
-		o.b.WriteByte(',')
-	}
-	o.b.WriteByte('\n')
+	o.b.Write(o.src[e.Start:e.Value.End])
+	o.b.WriteString(",\n")
 }
 
 func (o *luaOut) key(k string) {
@@ -201,6 +178,10 @@ func (o *luaOut) key(k string) {
 
 func (o *luaOut) keyed(e *luaEntry) {
 	if e.Key == nil {
+		return
+	}
+	if e.Key.Kind == luaString {
+		o.key(e.Key.Str)
 		return
 	}
 	o.b.WriteByte('[')
@@ -448,72 +429,13 @@ func (o *luaOut) bucket(bucket *luaValue, since float64) (int, error) {
 	return rows, nil
 }
 
-func (o *luaOut) market(m *luaValue, since float64) int {
-	if m == nil || m.Kind != luaTable {
-		return 0
-	}
-	var part luaOut
-	part.src = o.src
-	part.scalars(m)
-	rows := 0
-	byT := func(v *luaValue) bool { return v.Field("t").Number() > since }
-	if j := m.Field("journalator"); j != nil && j.Kind == luaTable {
-		var sections luaOut
-		sections.src = o.src
-		n := 0
-		for _, e := range j.Entries {
-			if e.Key != nil {
-				n += sections.filteredMap(e.KeyString(), e.Value, byT)
-			}
-		}
-		if n > 0 {
-			part.key("journalator")
-			part.b.WriteString("{\n")
-			part.b.WriteString(sections.b.String())
-			part.b.WriteString("},\n")
-			rows += n
-		}
-	}
-	rows += part.filteredMap("tsm", m.Field("tsm"), byT)
-	rows += part.filteredMap("auctionator", m.Field("auctionator"), byT)
-	if dj := m.Field("dungeonJournal"); dj != nil && dj.Kind == luaTable {
-		var d luaOut
-		d.src = o.src
-		n := 0
-		if dj.Field("accountAt").Number() > since {
-			for _, e := range dj.Entries {
-				if k := e.KeyString(); k == "account" || k == "accountAt" {
-					d.entry(e)
-				}
-			}
-			n++
-		}
-		n += d.filteredMap("characters", dj.Field("characters"), byT)
-		if n > 0 {
-			part.key("dungeonJournal")
-			part.b.WriteString("{\n")
-			part.b.WriteString(d.b.String())
-			part.b.WriteString("},\n")
-			rows += n
-		}
-	}
-	if rows == 0 {
-		return 0
-	}
-	o.key("market")
-	o.b.WriteString("{\n")
-	o.b.WriteString(part.b.String())
-	o.b.WriteString("},\n")
-	return rows
-}
-
 type Delta struct {
 	Lua  []byte
 	Rows int
 	Next Cursor
 }
 
-func BuildCensusDelta(src []byte, since Cursor) (Delta, error) {
+func BuildCensusDelta(src []byte, since Cursor, shares map[string]bool) (Delta, error) {
 	s, err := readCensusSave(src)
 	if err != nil {
 		return Delta{}, err
@@ -527,12 +449,11 @@ func BuildCensusDelta(src []byte, since Cursor) (Delta, error) {
 		next.Buckets[k] = max(next.Buckets[k], v)
 	}
 	next.Inspect = max(next.Inspect, now.Inspect)
-	next.Market = max(next.Market, now.Market)
 
 	o := &luaOut{src: src}
 	o.b.WriteString(cleanupDBName + " = {\n")
 	for _, e := range s.db.Entries {
-		if k := e.KeyString(); k != "realms" && k != "market" {
+		if k := e.KeyString(); k != "realms" && coreCensusField(k) {
 			o.entry(e)
 		}
 	}
@@ -562,9 +483,7 @@ func BuildCensusDelta(src []byte, since Cursor) (Delta, error) {
 		}
 	}
 	o.b.WriteString("},\n")
-	if now.Market > since.Market {
-		rows += o.market(s.db.Field("market"), since.Market)
-	}
+	rows += o.market(s.db.Field("market"), shares, &next)
 	o.b.WriteString("}\n")
 	if s.inspects != nil && s.inspects.Kind == luaTable {
 		o.b.WriteString(inspectDBName + " = {\n")
@@ -581,7 +500,7 @@ func BuildCensusDelta(src []byte, since Cursor) (Delta, error) {
 	}
 	out := []byte(o.b.String())
 	if _, err := readCensusSave(out); err != nil {
-		return Delta{}, errors.New("the session file could not be read back: " + err.Error())
+		return Delta{}, fmt.Errorf("the session file could not be read back: %w", err)
 	}
 	return Delta{Lua: out, Rows: rows, Next: next}, nil
 }
