@@ -354,8 +354,9 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 		uploadCfg := e.Config()
 		_, checked := e.state.CensusResult(fs.SourceID, censusCheckpointFor(uploadCfg, fs.SHA256))
 		_, inBackoff := e.state.Backoff(fs.SourceID, fs.SHA256, now)
+		recoverBaseline := forceUpload && e.censusNeedsFull(uploadCfg, fs.SourceID)
 		wantUpload := (uploadCfg.AutoUpload || forceUpload) && uploadCfg.ServerURL != "" &&
-			!checked && (forceUpload || !inBackoff)
+			(!checked || recoverBaseline) && (forceUpload || !inBackoff)
 		wantBackup := forceBackup || (cfg.AutoBackup && changed)
 
 		if changed || wantUpload || wantBackup {
@@ -427,7 +428,7 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 	cfg = e.Config()
 	addonFiles := e.reconcileAddons(ctx, cfg, forceUpload)
 
-	if cfg.AutoUpload && cfg.DeviceToken != "" {
+	if (cfg.AutoUpload || cfg.AutoClean) && cfg.DeviceToken != "" {
 		e.refreshReceipts(ctx, cfg, statuses, addonFiles)
 	}
 	addon := e.addonStatus(cfg)
@@ -457,10 +458,14 @@ func (e *Engine) send(ctx context.Context, cfg Config, m Manifest, data []byte, 
 		return Receipt{}, err
 	}
 	destination := censusDestination(cfg.ServerURL, id)
+	var previous Receipt
 	if m.Kind == KindCensus {
 		if r, ok := e.state.CensusReceipt(m.SourceID, destination, m.SHA256); ok {
-			r.Duplicate = true
-			return r, nil
+			if r.Status == "imported" || receiptPending(r.Status) {
+				r.Duplicate = true
+				return r, nil
+			}
+			previous = r
 		}
 	}
 	b, err := BuildBundleData(m, data)
@@ -494,6 +499,9 @@ func (e *Engine) send(ctx context.Context, cfg Config, m Manifest, data []byte, 
 		return Receipt{}, err
 	}
 	if m.Kind == KindCensus {
+		if r.Duplicate && r.ReceiptID == previous.ReceiptID {
+			r.Mode = previous.Mode
+		}
 		r.Destination = destination
 	}
 	return r, nil
@@ -543,6 +551,18 @@ func (e *Engine) coverWithLatest(sourceID, fileSHA string) bool {
 	return true
 }
 
+func (e *Engine) censusNeedsFull(cfg Config, sourceID string) bool {
+	if !cfg.AutoClean {
+		return false
+	}
+	cur, ok := e.state.Cursor(sourceID)
+	if !ok || cur.Census == nil {
+		return true
+	}
+	_, records, wait := e.state.CensusCleanupReceipt(sourceID, cur.Census.FileSHA256, censusDestination(cfg.ServerURL, cfg.DeviceID))
+	return wait == CleanupWaitCoverage || wait == "" && !records.Complete
+}
+
 func (e *Engine) uploadCensus(ctx context.Context, snap *Snapshot, sourceID string, forceUpload bool) {
 	cfg := e.Config()
 	if cfg.ServerURL == "" || !(cfg.AutoUpload || forceUpload) {
@@ -550,14 +570,15 @@ func (e *Engine) uploadCensus(ctx context.Context, snap *Snapshot, sourceID stri
 	}
 	label := snap.File.Edition + " / " + snap.File.AccountLabel()
 	check := censusCheckpointFor(cfg, snap.SHA256)
-	if _, ok := e.state.CensusResult(sourceID, check); ok {
+	recoverBaseline := forceUpload && e.censusNeedsFull(cfg, sourceID)
+	if _, ok := e.state.CensusResult(sourceID, check); ok && !recoverBaseline {
 		return
 	}
 	m := NewManifest(snap, sourceID)
 	cur, hasCursor := e.state.Cursor(sourceID)
 	var d Delta
 	var err error
-	if hasCursor {
+	if hasCursor && !recoverBaseline && (cur.Census == nil || cur.Census.Destination == check.Destination) {
 		d, err = BuildCensusDelta(snap.Data, cur, cfg.ShareAddons)
 		m.Mode, m.Rows = ModeSession, d.Rows
 	} else {
@@ -576,7 +597,15 @@ func (e *Engine) uploadCensus(ctx context.Context, snap *Snapshot, sourceID stri
 			return
 		}
 	}
-	if err := e.state.PutCensusResult(sourceID, check, d.Next, r); err != nil {
+	var prior censusRecordCoverage
+	if cur.Census.hasCoverage(check.Destination) {
+		prior = cur.Census.Coverage.Records
+	}
+	records := prior
+	if m.Mode != ModeSession || !prior.Complete || cur.Census.FileSHA256 != snap.SHA256 {
+		records = censusRecordsForUpload(snap.Data, d.Lua, m.Mode == ModeFull, cfg.AutoClean, prior)
+	}
+	if err := e.state.PutCensusResult(sourceID, check, d.Next, m.Mode, r, records); err != nil {
 		e.logf("error", "Could not save upload state for %s: %v", label, err)
 		return
 	}
@@ -779,14 +808,23 @@ const receiptChecksPerScan = 5
 
 func (e *Engine) refreshReceipts(ctx context.Context, cfg Config, groups ...[]FileStatus) {
 	client := e.newClient(cfg.ServerURL, cfg.DeviceToken)
-	checks := e.state.ReceiptsToCheck(e.now(), receiptCheckEvery, receiptChecksPerScan)
+	destination := censusDestination(cfg.ServerURL, cfg.DeviceID)
+	checks := e.state.ReceiptsToCheck(destination, cfg.AutoUpload, e.now(), receiptCheckEvery, receiptChecksPerScan)
 	updated := map[string]string{}
 	for _, c := range checks {
 		status, err := client.ReceiptStatus(ctx, c.ReceiptID)
 		if err != nil {
+			status = ""
+			var apiErr *APIError
+			if cfg.AutoClean && c.Coverage && errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+				status = "unknown"
+			}
+		} else if cfg.AutoClean && c.Coverage && status == "" {
+			status = "unknown"
+		}
+		if err := e.state.SetReceiptStatus(destination, c.ReceiptID, status, e.now().UTC()); err != nil || status == "" {
 			continue
 		}
-		_ = e.state.SetReceiptStatus(c.ReceiptID, status, e.now().UTC())
 		updated[c.ReceiptID] = status
 	}
 	if len(updated) == 0 {
@@ -795,14 +833,14 @@ func (e *Engine) refreshReceipts(ctx context.Context, cfg Config, groups ...[]Fi
 	for _, files := range groups {
 		for i := range files {
 			r := files[i].LastReceipt
-			if r == nil || updated[r.ReceiptID] == "" {
+			if r == nil || (r.Destination != "" && r.Destination != destination) || updated[r.ReceiptID] == "" {
 				continue
 			}
 			fresh := *r
 			fresh.Status, fresh.CheckedAt = updated[r.ReceiptID], e.now().UTC()
 			files[i].LastReceipt = &fresh
-			if fresh.Status == "imported" && files[i].Addon == "" && e.state.PendingReceipts(files[i].SourceID) == 0 {
-				e.logf("info", "%s / %s is now on wowcensus.io", files[i].Edition, files[i].AccountLabel())
+			if fresh.Status == "imported" && files[i].Addon == "" && e.state.PendingReceipts(files[i].SourceID, destination) == 0 {
+				e.logf("info", "Upload for %s / %s has been imported by wowcensus.io", files[i].Edition, files[i].AccountLabel())
 			}
 		}
 	}

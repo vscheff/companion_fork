@@ -30,13 +30,29 @@ type Receipt struct {
 func receiptPending(status string) bool { return status == "queued" || status == "stored" }
 
 type censusCheckpoint struct {
-	FileSHA256  string        `json:"fileSha256"`
-	Consent     marketConsent `json:"consent"`
-	Destination string        `json:"destination"`
-	UploadSHA   string        `json:"uploadSha,omitempty"`
+	FileSHA256  string          `json:"fileSha256"`
+	Consent     marketConsent   `json:"consent"`
+	Destination string          `json:"destination"`
+	UploadSHA   string          `json:"uploadSha,omitempty"`
+	Coverage    *censusCoverage `json:"coverage,omitempty"`
+}
+
+type censusCoverage struct {
+	ImportedBaseline bool                 `json:"importedBaseline,omitempty"`
+	Required         []censusImport       `json:"required"`
+	Records          censusRecordCoverage `json:"records"`
+}
+
+type censusImport struct {
+	UploadSHA string `json:"uploadSha"`
+	ReceiptID string `json:"receiptId"`
+	Mode      string `json:"mode"`
 }
 
 func censusDestination(serverURL, deviceID string) string {
+	if serverURL == "" || deviceID == "" {
+		return ""
+	}
 	return hashText(serverURL + "\x00" + deviceID)
 }
 
@@ -55,8 +71,9 @@ type Failure struct {
 }
 
 type State struct {
-	mu   sync.Mutex
-	path string
+	mu      sync.Mutex
+	path    string
+	saveErr error
 
 	InstallSalt string              `json:"installSalt"`
 	UpdateCheck time.Time           `json:"updateCheck"`
@@ -159,8 +176,12 @@ func censusReceiptKey(sourceID, destination, uploadSHA string) string {
 func (s *State) CensusReceipt(sourceID, destination, uploadSHA string) (Receipt, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.censusReceiptLocked(sourceID, destination, uploadSHA)
+}
+
+func (s *State) censusReceiptLocked(sourceID, destination, uploadSHA string) (Receipt, bool) {
 	r, ok := s.Receipts[censusReceiptKey(sourceID, destination, uploadSHA)]
-	return r, ok
+	return r, ok && r.SourceID == sourceID && r.Destination == destination && r.UploadSHA == uploadSHA && r.ReceiptID != ""
 }
 
 func (s *State) CensusResult(sourceID string, check censusCheckpoint) (Receipt, bool) {
@@ -173,14 +194,19 @@ func (s *State) CensusResult(sourceID string, check censusCheckpoint) (Receipt, 
 	if p.UploadSHA == "" {
 		return Receipt{SourceID: sourceID, SHA256: p.FileSHA256, Status: "empty"}, true
 	}
-	r, ok := s.Receipts[censusReceiptKey(sourceID, p.Destination, p.UploadSHA)]
+	r, ok := s.censusReceiptLocked(sourceID, p.Destination, p.UploadSHA)
+	r.SHA256 = p.FileSHA256
 	return r, ok
 }
 
-func (s *State) PutCensusResult(sourceID string, check censusCheckpoint, next Cursor, r Receipt) error {
+func (s *State) PutCensusResult(sourceID string, check censusCheckpoint, next Cursor, mode string, r Receipt, records censusRecordCoverage) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if r.ReceiptID != "" {
 		check.Destination, check.UploadSHA = r.Destination, r.UploadSHA
+	}
+	check.Coverage = s.nextCensusCoverageLocked(sourceID, check.Destination, next.Census, mode, r, records)
+	if r.ReceiptID != "" {
 		r.SHA256 = check.FileSHA256
 		s.Receipts[censusReceiptKey(sourceID, r.Destination, r.UploadSHA)] = r
 		s.pruneReceiptsLocked()
@@ -188,31 +214,98 @@ func (s *State) PutCensusResult(sourceID string, check censusCheckpoint, next Cu
 	next.Census = &check
 	s.Cursors[sourceID] = next.clone()
 	delete(s.Failures, receiptKey(sourceID, check.FileSHA256))
-	s.mu.Unlock()
-	return s.Save()
+	return s.saveLocked()
 }
 
-func (s *State) CensusCleanupReceipt(sourceID, fileSHA, destination string) (Receipt, bool) {
+func (s *State) nextCensusCoverageLocked(sourceID, destination string, prev *censusCheckpoint, mode string, r Receipt, records censusRecordCoverage) *censusCoverage {
+	if destination == "" || r.ReceiptID != "" && (r.Mode != mode || r.SourceID != sourceID || r.UploadSHA == "") {
+		return nil
+	}
+	ref := censusImport{UploadSHA: r.UploadSHA, ReceiptID: r.ReceiptID, Mode: r.Mode}
+	if mode == ModeFull && r.ReceiptID != "" {
+		return &censusCoverage{Required: []censusImport{ref}, Records: records}
+	}
+	if mode != ModeSession || !prev.hasCoverage(destination) {
+		return nil
+	}
+	coverage := *prev.Coverage
+	coverage.Records = records
+	if r.ReceiptID == "" {
+		return &coverage
+	}
+	required := coverage.Required
+	for len(required) > 0 {
+		prior, ok := s.censusImportLocked(sourceID, destination, required[0])
+		if !ok || prior.Status != "imported" {
+			break
+		}
+		coverage.ImportedBaseline = true
+		required = required[1:]
+	}
+	if len(required) >= maxReceipts {
+		return nil
+	}
+	coverage.Required = append(append([]censusImport(nil), required...), ref)
+	return &coverage
+}
+
+func (p *censusCheckpoint) hasCoverage(destination string) bool {
+	if destination == "" || p == nil || p.FileSHA256 == "" || p.Destination != destination || !p.Coverage.valid() {
+		return false
+	}
+	required := p.Coverage.Required
+	return p.UploadSHA == "" || p.UploadSHA == required[len(required)-1].UploadSHA
+}
+
+func (c *censusCoverage) valid() bool {
+	if c == nil || len(c.Required) == 0 || len(c.Required) > maxReceipts {
+		return false
+	}
+	for i, ref := range c.Required {
+		mode := ModeSession
+		if i == 0 && !c.ImportedBaseline {
+			mode = ModeFull
+		}
+		if ref.Mode != mode || ref.ReceiptID == "" || ref.UploadSHA == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *State) censusImportLocked(sourceID, destination string, ref censusImport) (Receipt, bool) {
+	r, ok := s.censusReceiptLocked(sourceID, destination, ref.UploadSHA)
+	return r, ok && r.ReceiptID == ref.ReceiptID && r.Mode == ref.Mode
+}
+
+func (s *State) CensusCleanupReceipt(sourceID, fileSHA, destination string) (Receipt, censusRecordCoverage, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var best Receipt
-	found := false
-	for _, r := range s.Receipts {
-		if r.SourceID != sourceID || r.SHA256 != fileSHA || r.Destination != destination {
-			continue
-		}
-		if r.Status != "imported" {
-			return Receipt{}, false
-		}
-		if !found || r.At.After(best.At) {
-			best, found = r, true
-		}
+	p := s.Cursors[sourceID].Census
+	if s.saveErr != nil || !p.hasCoverage(destination) {
+		return Receipt{}, censusRecordCoverage{}, CleanupWaitCoverage
 	}
-	if found {
-		return best, true
+	wait := ""
+	var latest Receipt
+	for _, ref := range p.Coverage.Required {
+		r, ok := s.censusImportLocked(sourceID, destination, ref)
+		if !ok {
+			return Receipt{}, censusRecordCoverage{}, CleanupWaitCoverage
+		}
+		switch {
+		case r.Status == "imported":
+		case receiptPending(r.Status):
+			wait = CleanupWaitImport
+		default:
+			return Receipt{}, censusRecordCoverage{}, CleanupWaitCoverage
+		}
+		latest = r
 	}
-	r, ok := s.Receipts[receiptKey(sourceID, fileSHA)]
-	return r, ok && (r.Destination == "" || r.Destination == destination)
+	if p.FileSHA256 != fileSHA {
+		return Receipt{}, p.Coverage.Records, CleanupWaitImport
+	}
+	latest.SHA256 = fileSHA
+	return latest, p.Coverage.Records, wait
 }
 
 func (s *State) LatestReceipt(sourceID string) (Receipt, bool) {
@@ -305,11 +398,22 @@ func (s *State) LastCleanup(sourceID string) (Cleanup, bool) {
 	return c, ok
 }
 
-func (s *State) PutCleanup(sourceID string, c Cleanup) error {
+func (s *State) PutCensusCleanup(sourceID, destination string, snap *Snapshot, afterSHA string, seen FileSig, c Cleanup) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Cleanups[sourceID] = c
-	s.mu.Unlock()
-	return s.Save()
+	if seen != (FileSig{}) {
+		s.Seen[pathKey(snap.File.Path)] = seenFile{Sig: seen, SHA256: afterSHA}
+	}
+	cur := s.Cursors[sourceID]
+	if p := cur.Census; p.hasCoverage(destination) && p.FileSHA256 == snap.SHA256 {
+		check := *p
+		check.FileSHA256 = afterSHA
+		cur.Census = &check
+		s.Cursors[sourceID] = cur
+		delete(s.Failures, receiptKey(sourceID, afterSHA))
+	}
+	return s.saveLocked()
 }
 
 func (s *State) Cursor(sourceID string) (Cursor, bool) {
@@ -326,12 +430,12 @@ func (s *State) SetCursor(sourceID string, c Cursor) error {
 	return s.Save()
 }
 
-func (s *State) PendingReceipts(sourceID string) int {
+func (s *State) PendingReceipts(sourceID, destination string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ids := map[string]bool{}
 	for _, r := range s.Receipts {
-		if r.SourceID == sourceID && r.ReceiptID != "" && receiptPending(r.Status) {
+		if r.SourceID == sourceID && r.Destination == destination && r.ReceiptID != "" && receiptPending(r.Status) {
 			ids[r.ReceiptID] = true
 		}
 	}
@@ -340,20 +444,34 @@ func (s *State) PendingReceipts(sourceID string) int {
 
 type receiptCheck struct {
 	ReceiptID string
-	SourceID  string
 	CheckedAt time.Time
+	Coverage  bool
 }
 
-func (s *State) ReceiptsToCheck(now time.Time, every time.Duration, limit int) []receiptCheck {
+func (s *State) ReceiptsToCheck(destination string, checkAddons bool, now time.Time, every time.Duration, limit int) []receiptCheck {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	required := map[string]bool{}
+	for sourceID, cur := range s.Cursors {
+		p := cur.Census
+		if !p.hasCoverage(destination) {
+			continue
+		}
+		for _, ref := range p.Coverage.Required {
+			required[censusReceiptKey(sourceID, destination, ref.UploadSHA)] = true
+		}
+	}
 	byID := map[string]receiptCheck{}
-	for _, r := range s.Receipts {
-		if r.ReceiptID == "" || !receiptPending(r.Status) || now.Sub(r.CheckedAt) < every {
+	for key, r := range s.Receipts {
+		if (r.Destination != "" && r.Destination != destination) || (r.Destination == "" && !checkAddons) {
+			continue
+		}
+		if r.ReceiptID == "" || r.Status == "imported" ||
+			(!receiptPending(r.Status) && !required[key]) || now.Sub(r.CheckedAt) < every {
 			continue
 		}
 		if c, ok := byID[r.ReceiptID]; !ok || r.CheckedAt.Before(c.CheckedAt) {
-			byID[r.ReceiptID] = receiptCheck{ReceiptID: r.ReceiptID, SourceID: r.SourceID, CheckedAt: r.CheckedAt}
+			byID[r.ReceiptID] = receiptCheck{ReceiptID: r.ReceiptID, CheckedAt: r.CheckedAt, Coverage: required[key]}
 		}
 	}
 	out := make([]receiptCheck, 0, len(byID))
@@ -372,24 +490,32 @@ func (s *State) ReceiptsToCheck(now time.Time, every time.Duration, limit int) [
 	return out
 }
 
-func (s *State) SetReceiptStatus(receiptID, status string, checked time.Time) error {
+func (s *State) SetReceiptStatus(destination, receiptID, status string, checked time.Time) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	for k, r := range s.Receipts {
-		if r.ReceiptID == receiptID {
-			r.Status, r.CheckedAt = status, checked
+		if r.ReceiptID == receiptID && (r.Destination == "" || r.Destination == destination) {
+			if status != "" {
+				r.Status = status
+			}
+			r.CheckedAt = checked
 			s.Receipts[k] = r
 		}
 	}
-	s.mu.Unlock()
-	return s.Save()
+	return s.saveLocked()
 }
 
 func (s *State) Save() error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveLocked()
+}
+
+func (s *State) saveLocked() error {
 	b, err := json.MarshalIndent(s, "", "  ")
-	s.mu.Unlock()
-	if err != nil {
-		return err
+	if err == nil {
+		err = writeFileAtomic(s.path, b, 0o600)
 	}
-	return writeFileAtomic(s.path, b, 0o600)
+	s.saveErr = err
+	return err
 }

@@ -268,10 +268,10 @@ func TestCensusConsentTransitions(t *testing.T) {
 	if r == nil {
 		t.Fatal("restored consent upload has no receipt")
 	}
-	if err := e.state.SetReceiptStatus(r.ReceiptID, "imported", time.Now()); err != nil {
+	if err := e.state.SetReceiptStatus(destination, r.ReceiptID, "imported", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := e.state.CensusCleanupReceipt(restored.SourceID, restored.FileSHA256, destination); ok {
+	if _, _, wait := e.state.CensusCleanupReceipt(restored.SourceID, restored.FileSHA256, destination); wait == "" {
 		t.Fatal("an imported market-only delta made the original save eligible for cleanup")
 	}
 	setCensusConsent(t, e, nil)

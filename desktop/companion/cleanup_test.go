@@ -400,9 +400,9 @@ func (s *importServer) handler() http.Handler {
 	})
 	mux.HandleFunc("/v1/uploads", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
-		s.puts.Add(1)
+		id := s.puts.Add(1)
 		w.WriteHeader(201)
-		_ = json.NewEncoder(w).Encode(uploadResponse{Status: "queued", ReceiptID: "00000000-0000-0000-0000-000000000009"})
+		_ = json.NewEncoder(w).Encode(uploadResponse{Status: "queued", ReceiptID: fmt.Sprintf("00000000-0000-0000-0000-%012d", id)})
 	})
 	mux.HandleFunc("/v1/uploads/", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
@@ -441,7 +441,14 @@ func TestEngineSkipsCleanupOfMalformedSavedVariables(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := e.state.PutReceipt(Receipt{SourceID: e.state.SourceID(f.Path), SHA256: snap.SHA256, Status: "imported", At: snap.TakenAt}); err != nil {
+			if err := e.setDevice(cfg.ServerURL, "test-device", ""); err != nil {
+				t.Fatal(err)
+			}
+			sourceID := e.state.SourceID(f.Path)
+			check := censusCheckpointFor(e.Config(), snap.SHA256)
+			receipt := Receipt{SourceID: sourceID, UploadSHA: snap.SHA256, Destination: check.Destination,
+				Mode: ModeFull, ReceiptID: "test-import", Status: "imported", At: snap.TakenAt}
+			if err := e.state.PutCensusResult(sourceID, check, Cursor{}, ModeFull, receipt, censusRecordCoverage{Complete: true}); err != nil {
 				t.Fatal(err)
 			}
 
