@@ -427,7 +427,6 @@ func TestCensusReceiptReuseUsesPayloadHash(t *testing.T) {
 	ctx := context.Background()
 	e.RunOnce(ctx, false, false)
 	m, _ := verifyCensusBundle(t, fs, 1, src, ModeFull, 0)
-	// A rebuilt full export can be identical after a local-only edit.
 	e.state.mu.Lock()
 	delete(e.state.Cursors, m.SourceID)
 	e.state.mu.Unlock()

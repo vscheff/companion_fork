@@ -5,7 +5,6 @@ import (
 	"math"
 )
 
-// The positions are persisted in the census checkpoint. Keep them stable.
 var censusMarketSources = [...]struct {
 	field   string
 	setting string
@@ -64,8 +63,6 @@ func buildCensusFull(src []byte, shares map[string]bool) (Delta, error) {
 	return Delta{Lua: out, Next: next}, nil
 }
 
-// Both export modes write only the known collector sections. Advance a source
-// from records written here, independently of the other sources and collector metadata.
 func (o *luaOut) market(m *luaValue, shares map[string]bool, next *Cursor) int {
 	if m == nil || m.Kind != luaTable {
 		return 0
@@ -101,7 +98,6 @@ func (o *luaOut) market(m *luaValue, shares map[string]bool, next *Cursor) int {
 	}
 	o.key("market")
 	o.b.WriteString("{\n")
-	// These describe the data format and game. Collector activity and cursors stay local.
 	for _, e := range m.Entries {
 		switch e.KeyString() {
 		case "game", "region":

@@ -171,7 +171,6 @@ func (s *State) CensusResult(sourceID string, check censusCheckpoint) (Receipt, 
 		return Receipt{}, false
 	}
 	if p.UploadSHA == "" {
-		// This is display state for a checked save with no eligible rows.
 		return Receipt{SourceID: sourceID, SHA256: p.FileSHA256, Status: "empty"}, true
 	}
 	r, ok := s.Receipts[censusReceiptKey(sourceID, p.Destination, p.UploadSHA)]
@@ -196,14 +195,22 @@ func (s *State) PutCensusResult(sourceID string, check censusCheckpoint, next Cu
 func (s *State) CensusCleanupReceipt(sourceID, fileSHA, destination string) (Receipt, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// A filtered full export still contains all census rows that cleanup can trim.
+	var best Receipt
+	found := false
 	for _, r := range s.Receipts {
-		if r.SourceID == sourceID && r.SHA256 == fileSHA && r.Destination == destination &&
-			r.Mode == ModeFull && r.Status == "imported" {
-			return r, true
+		if r.SourceID != sourceID || r.SHA256 != fileSHA || r.Destination != destination {
+			continue
+		}
+		if r.Status != "imported" {
+			return Receipt{}, false
+		}
+		if !found || r.At.After(best.At) {
+			best, found = r, true
 		}
 	}
-	// Keep compatibility with existing receipt state and previously cleaned saves.
+	if found {
+		return best, true
+	}
 	r, ok := s.Receipts[receiptKey(sourceID, fileSHA)]
 	return r, ok && (r.Destination == "" || r.Destination == destination)
 }

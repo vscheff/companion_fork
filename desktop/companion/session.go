@@ -11,9 +11,8 @@ import (
 const inspectDBName = "NameplateInspectDB"
 
 type Cursor struct {
-	Buckets map[string]float64 `json:"buckets,omitempty"`
-	Inspect float64            `json:"inspect,omitempty"`
-	// The legacy "market" watermark is ignored because it proved no per-source coverage.
+	Buckets        map[string]float64 `json:"buckets,omitempty"`
+	Inspect        float64            `json:"inspect,omitempty"`
 	MarketBySource map[string]float64 `json:"marketBySource,omitempty"`
 	Marks          map[string]float64 `json:"marks,omitempty"`
 	Hashes         map[string]string  `json:"hashes,omitempty"`

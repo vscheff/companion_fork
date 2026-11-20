@@ -474,7 +474,6 @@ func (e *Engine) send(ctx context.Context, cfg Config, m Manifest, data []byte, 
 	e.logf("info", "Uploading %s: %s (%s zipped)", label, what, humanBytes(int64(len(b.Zip))))
 	c := e.newClient(cfg.ServerURL, token)
 	c.ClientID = e.state.ClientID()
-	// Settings may have changed while preparing the bundle or registering.
 	if !e.uploadAllowed(cfg, m) {
 		return Receipt{}, errUploadSettingsChanged
 	}
