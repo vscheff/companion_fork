@@ -220,13 +220,15 @@ func main() {
 	tray := app.SystemTray.New()
 	if runtime.GOOS == "darwin" {
 		tray.SetTemplateIcon(trayIcon)
-		tray.SetLabel("WC")
 	} else {
 		tray.SetIcon(trayIcon)
 	}
 	tray.SetTooltip("WoWCensus Companion")
 	tray.SetMenu(menu)
-	tray.OnClick(show)
+	// On macOS a left click opens the menu, like other menu bar apps.
+	if runtime.GOOS != "darwin" {
+		tray.OnClick(show)
+	}
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
