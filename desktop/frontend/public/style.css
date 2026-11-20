@@ -71,6 +71,9 @@ h2 { font-size: 15px; margin: 18px 0 6px; }
 .addon-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .small { font-size: 12px; margin: 8px 0 0; }
 .banner.update { background: #14263a; border-color: #2c5a8a; }
+.banner.extras { background: #142a22; border-color: #2c6a4e; }
+.banner.extras > span { flex: 1; }
+.banner.extras b { color: var(--ok); }
 .update-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .app-version { position: fixed; right: 10px; bottom: 6px; font-size: 11px; color: var(--muted); pointer-events: none; user-select: none; }
 main { padding-bottom: 28px; }
