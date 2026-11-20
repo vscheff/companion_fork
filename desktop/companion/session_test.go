@@ -62,18 +62,20 @@ func sessionFixture(stage int) string {
 
 func TestCensusDeltaKeepsOnlyNewRows(t *testing.T) {
 	first := []byte(sessionFixture(1))
-	marks, err := CensusMarks(first)
+	shares := map[string]bool{"tsm": true}
+	full, err := buildCensusFull(first, shares)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if marks.Buckets["us:retail:Busy-Alliance"] != 1790000100 || marks.Inspect != 1790000100 || marks.Market != 1790000100 {
+	marks := full.Next
+	if marks.Buckets["us:retail:Busy-Alliance"] != 1790000100 || marks.Inspect != 1790000100 || marks.MarketBySource["tsm"] != 1790000100 {
 		t.Fatalf("marks %+v", marks)
 	}
-	if d, err := BuildCensusDelta(first, marks); err != nil || d.Lua != nil {
+	if d, err := BuildCensusDelta(first, marks, shares); err != nil || d.Lua != nil {
 		t.Fatalf("an unchanged save should have nothing new: %v %q", err, d.Lua)
 	}
 
-	d, err := BuildCensusDelta([]byte(sessionFixture(2)), marks)
+	d, err := BuildCensusDelta([]byte(sessionFixture(2)), marks, shares)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,20 +93,20 @@ func TestCensusDeltaKeepsOnlyNewRows(t *testing.T) {
 	if d.Rows != 6 {
 		t.Errorf("want 6 rows (sample, character, query, observation, tsm, inspect), got %d", d.Rows)
 	}
-	if d.Next.Buckets["us:retail:Busy-Alliance"] != 1790000500 || d.Next.Inspect != 1790000500 || d.Next.Market != 1790000500 {
+	if d.Next.Buckets["us:retail:Busy-Alliance"] != 1790000500 || d.Next.Inspect != 1790000500 || d.Next.MarketBySource["tsm"] != 1790000500 {
 		t.Errorf("cursor did not advance: %+v", d.Next)
 	}
 	if _, err := readCensusSave(d.Lua); err != nil {
 		t.Fatal(err)
 	}
-	again, err := BuildCensusDelta([]byte(sessionFixture(2)), d.Next)
+	again, err := BuildCensusDelta([]byte(sessionFixture(2)), d.Next, shares)
 	if err != nil || again.Lua != nil {
 		t.Fatalf("the same save twice should send nothing the second time: %v %q", err, again.Lua)
 	}
 }
 
 func TestCensusDeltaSendsNewRealmsWhole(t *testing.T) {
-	d, err := BuildCensusDelta([]byte(sessionFixture(2)), Cursor{Buckets: map[string]float64{"us:retail:Busy-Alliance": 1790000500}})
+	d, err := BuildCensusDelta([]byte(sessionFixture(2)), Cursor{Buckets: map[string]float64{"us:retail:Busy-Alliance": 1790000500}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

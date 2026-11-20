@@ -14,19 +14,39 @@ import (
 )
 
 type Receipt struct {
-	SourceID  string    `json:"sourceId"`
-	SHA256    string    `json:"sha256"`
-	Status    string    `json:"status"`
-	ReceiptID string    `json:"receiptId,omitempty"`
-	Duplicate bool      `json:"duplicate,omitempty"`
-	CheckedAt time.Time `json:"checkedAt,omitempty"`
-	Bytes     int64     `json:"bytes"`
-	At        time.Time `json:"at"`
-	UploadSHA string    `json:"uploadSha,omitempty"`
-	Mode      string    `json:"mode,omitempty"`
+	SourceID    string    `json:"sourceId"`
+	SHA256      string    `json:"sha256"`
+	Status      string    `json:"status"`
+	ReceiptID   string    `json:"receiptId,omitempty"`
+	Duplicate   bool      `json:"duplicate,omitempty"`
+	CheckedAt   time.Time `json:"checkedAt,omitempty"`
+	Bytes       int64     `json:"bytes"`
+	At          time.Time `json:"at"`
+	UploadSHA   string    `json:"uploadSha,omitempty"`
+	Mode        string    `json:"mode,omitempty"`
+	Destination string    `json:"destination,omitempty"`
 }
 
 func receiptPending(status string) bool { return status == "queued" || status == "stored" }
+
+type censusCheckpoint struct {
+	FileSHA256  string        `json:"fileSha256"`
+	Consent     marketConsent `json:"consent"`
+	Destination string        `json:"destination"`
+	UploadSHA   string        `json:"uploadSha,omitempty"`
+}
+
+func censusDestination(serverURL, deviceID string) string {
+	return hashText(serverURL + "\x00" + deviceID)
+}
+
+func censusCheckpointFor(cfg Config, fileSHA string) censusCheckpoint {
+	return censusCheckpoint{
+		FileSHA256:  fileSHA,
+		Consent:     censusMarketConsent(cfg.ShareAddons),
+		Destination: censusDestination(cfg.ServerURL, cfg.DeviceID),
+	}
+}
 
 type Failure struct {
 	Attempts int       `json:"attempts"`
@@ -130,6 +150,69 @@ func (s *State) Receipt(sourceID, sha string) (Receipt, bool) {
 	defer s.mu.Unlock()
 	r, ok := s.Receipts[receiptKey(sourceID, sha)]
 	return r, ok
+}
+
+func censusReceiptKey(sourceID, destination, uploadSHA string) string {
+	return "census:" + destination + ":" + receiptKey(sourceID, uploadSHA)
+}
+
+func (s *State) CensusReceipt(sourceID, destination, uploadSHA string) (Receipt, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.Receipts[censusReceiptKey(sourceID, destination, uploadSHA)]
+	return r, ok
+}
+
+func (s *State) CensusResult(sourceID string, check censusCheckpoint) (Receipt, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.Cursors[sourceID].Census
+	if p == nil || p.FileSHA256 != check.FileSHA256 || p.Consent != check.Consent || p.Destination != check.Destination {
+		return Receipt{}, false
+	}
+	if p.UploadSHA == "" {
+		return Receipt{SourceID: sourceID, SHA256: p.FileSHA256, Status: "empty"}, true
+	}
+	r, ok := s.Receipts[censusReceiptKey(sourceID, p.Destination, p.UploadSHA)]
+	return r, ok
+}
+
+func (s *State) PutCensusResult(sourceID string, check censusCheckpoint, next Cursor, r Receipt) error {
+	s.mu.Lock()
+	if r.ReceiptID != "" {
+		check.Destination, check.UploadSHA = r.Destination, r.UploadSHA
+		r.SHA256 = check.FileSHA256
+		s.Receipts[censusReceiptKey(sourceID, r.Destination, r.UploadSHA)] = r
+		s.pruneReceiptsLocked()
+	}
+	next.Census = &check
+	s.Cursors[sourceID] = next.clone()
+	delete(s.Failures, receiptKey(sourceID, check.FileSHA256))
+	s.mu.Unlock()
+	return s.Save()
+}
+
+func (s *State) CensusCleanupReceipt(sourceID, fileSHA, destination string) (Receipt, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var best Receipt
+	found := false
+	for _, r := range s.Receipts {
+		if r.SourceID != sourceID || r.SHA256 != fileSHA || r.Destination != destination {
+			continue
+		}
+		if r.Status != "imported" {
+			return Receipt{}, false
+		}
+		if !found || r.At.After(best.At) {
+			best, found = r, true
+		}
+	}
+	if found {
+		return best, true
+	}
+	r, ok := s.Receipts[receiptKey(sourceID, fileSHA)]
+	return r, ok && (r.Destination == "" || r.Destination == destination)
 }
 
 func (s *State) LatestReceipt(sourceID string) (Receipt, bool) {
