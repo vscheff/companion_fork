@@ -31,6 +31,11 @@
       <span data-i18n="banner.consent">Share your WoWCensus data with wowcensus.io? Each new save is uploaded automatically: character names, realms and census data, never your file paths or account name.</span>
       <button type="button" id="btn-enable" data-i18n="banner.turnOnUploads">Turn on uploads</button>
     </div>
+    <div id="extras-banner" class="banner extras" hidden>
+      <span><b data-i18n="banner.extrasNew">New!</b> <span data-i18n="banner.extras">You can now share data from Auctionator, Journalator, TradeSkillMaster and the Dungeon Journal. Turn it on in Settings.</span></span>
+      <button type="button" id="btn-extras" data-i18n="banner.extrasOpen">Open Settings</button>
+      <button type="button" id="btn-extras-dismiss" class="ghost small" data-i18n="banner.dismiss">Dismiss</button>
+    </div>
 
     <div class="card" id="addon-card">
       <div class="card-head">
@@ -96,7 +101,7 @@
         <label class="check"><input type="checkbox" name="autoClean"/> <span data-i18n="settings.autoClean">Clean up WoWCensus saves automatically</span></label>
         <p class="hint" data-i18n="settings.autoCleanHint">Removes old data wowcensus.io already has. Only runs while WoW is closed, after a backup.</p>
       </fieldset>
-      <fieldset>
+      <fieldset id="other-addons">
         <legend data-i18n="settings.otherAddons">Other add-ons</legend>
         <p class="hint" data-i18n="settings.otherAddonsHint">Also share market and dungeon data from these add-ons. Other players' names, mail and chat text are removed on this computer before anything is sent. Only the ones you tick are shared.</p>
         <label class="check"><input type="checkbox" name="share-auctionator"/> <span>Auctionator</span></label>

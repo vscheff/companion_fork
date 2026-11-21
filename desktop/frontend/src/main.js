@@ -275,7 +275,35 @@ $("#btn-update").onclick = async () => {
 const form = $("#settings");
 const SHARE_KEYS = ["auctionator", "journalator", "tsm", "dungeonjournal"];
 
+const EXTRAS_DISMISSED_KEY = "wowcensus_extras_banner_dismissed";
+
+function extrasDismissed() {
+  try {
+    return localStorage.getItem(EXTRAS_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function renderExtrasBanner(v) {
+  const anyShared = SHARE_KEYS.some((key) => v?.shareAddons?.[key]);
+  $("#extras-banner").hidden = anyShared || extrasDismissed();
+}
+
+$("#btn-extras").onclick = () => {
+  document.querySelector('.tabs button[data-tab="settings"]').click();
+  $("#other-addons").scrollIntoView({behavior: "smooth", block: "start"});
+};
+
+$("#btn-extras-dismiss").onclick = () => {
+  try {
+    localStorage.setItem(EXTRAS_DISMISSED_KEY, "1");
+  } catch {}
+  $("#extras-banner").hidden = true;
+};
+
 function fillSettings(v) {
+  renderExtrasBanner(v);
   form.elements.autoUpload.checked = !!v.autoUpload;
   form.elements.startAtLogin.checked = !!v.startAtLogin;
   form.elements.autoClean.checked = !!v.autoClean;
