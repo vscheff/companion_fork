@@ -15,6 +15,7 @@ type Cursor struct {
 	Buckets        map[string]float64 `json:"buckets,omitempty"`
 	Inspect        float64            `json:"inspect,omitempty"`
 	MarketBySource map[string]float64 `json:"marketBySource,omitempty"`
+	AuctionLog     float64            `json:"auctionLog,omitempty"`
 	Marks          map[string]float64 `json:"marks,omitempty"`
 	Hashes         map[string]string  `json:"hashes,omitempty"`
 	Census         *censusCheckpoint  `json:"census,omitempty"`
@@ -485,6 +486,7 @@ func BuildCensusDelta(src []byte, since Cursor, shares map[string]bool) (Delta, 
 	}
 	o.b.WriteString("},\n")
 	rows += o.market(s.db.Field("market"), shares, &next)
+	rows += o.auctionLog(s.db.Field("auctionLog"), since.AuctionLog, &next)
 	o.b.WriteString("}\n")
 	if s.inspects != nil && s.inspects.Kind == luaTable {
 		o.b.WriteString(inspectDBName + " = {\n")

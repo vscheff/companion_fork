@@ -50,6 +50,7 @@ func buildCensusFull(src []byte, shares map[string]bool) (Delta, error) {
 		}
 	}
 	o.market(s.db.Field("market"), shares, &next)
+	o.auctionLog(s.db.Field("auctionLog"), math.Inf(-1), &next)
 	o.b.WriteString("}\n")
 	if s.inspects != nil && s.inspects.Kind == luaTable {
 		o.b.WriteString(inspectDBName + " = ")
@@ -112,6 +113,68 @@ func (o *luaOut) market(m *luaValue, shares map[string]bool, next *Cursor) int {
 	}
 	o.b.WriteString(part.b.String())
 	o.b.WriteString("},\n")
+	return rows
+}
+
+func (o *luaOut) auctionLog(v *luaValue, since float64, next *Cursor) int {
+	if v == nil || v.Kind != luaTable {
+		return 0
+	}
+	part := luaOut{src: o.src}
+	rows := 0
+	latest := since
+	for _, character := range v.Entries {
+		if character.Key == nil || character.Value == nil || character.Value.Kind != luaTable {
+			continue
+		}
+		body := luaOut{src: o.src}
+		n := 0
+		for _, field := range character.Value.Entries {
+			if field.Key == nil {
+				continue
+			}
+			if field.KeyString() != "rows" {
+				if isScalar(field.Value) || field.KeyString() == "identity" {
+					body.entry(field)
+				}
+				continue
+			}
+			if field.Value == nil || field.Value.Kind != luaTable {
+				continue
+			}
+			body.key("rows")
+			body.b.WriteString("{\n")
+			for _, row := range field.Value.Entries {
+				if row.Key == nil || row.Value == nil || row.Value.Kind != luaTable {
+					continue
+				}
+				t := row.Value.Field("t").Number()
+				if !(t > since) || math.IsInf(t, 0) {
+					continue
+				}
+				body.entry(row)
+				latest = max(latest, t)
+				n++
+			}
+			body.b.WriteString("},\n")
+		}
+		if n == 0 {
+			continue
+		}
+		part.keyed(character)
+		part.b.WriteString("{\n")
+		part.b.WriteString(body.b.String())
+		part.b.WriteString("},\n")
+		rows += n
+	}
+	if rows == 0 {
+		return 0
+	}
+	o.key("auctionLog")
+	o.b.WriteString("{\n")
+	o.b.WriteString(part.b.String())
+	o.b.WriteString("},\n")
+	next.AuctionLog = latest
 	return rows
 }
 
