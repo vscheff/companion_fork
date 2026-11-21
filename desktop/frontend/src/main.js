@@ -275,7 +275,6 @@ $("#btn-update").onclick = async () => {
 const form = $("#settings");
 const SHARE_KEYS = ["auctionator", "journalator", "tsm", "dungeonjournal"];
 
-// Temporary: announces add-on sharing until the user dismisses it or ticks an add-on.
 const EXTRAS_DISMISSED_KEY = "wowcensus_extras_banner_dismissed";
 
 function extrasDismissed() {

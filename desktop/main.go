@@ -225,7 +225,6 @@ func main() {
 	}
 	tray.SetTooltip("WoWCensus Companion")
 	tray.SetMenu(menu)
-	// On macOS a left click opens the menu, like other menu bar apps.
 	if runtime.GOOS != "darwin" {
 		tray.OnClick(show)
 	}
