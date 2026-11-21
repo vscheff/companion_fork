@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -34,7 +35,11 @@ type censusCheckpoint struct {
 	Consent     marketConsent `json:"consent"`
 	Destination string        `json:"destination"`
 	UploadSHA   string        `json:"uploadSha,omitempty"`
+	Baseline    bool          `json:"baseline,omitempty"`
+	Chain       []string      `json:"chain,omitempty"`
 }
+
+const maxCensusChain = 256
 
 func censusDestination(serverURL, deviceID string) string {
 	return hashText(serverURL + "\x00" + deviceID)
@@ -177,14 +182,16 @@ func (s *State) CensusResult(sourceID string, check censusCheckpoint) (Receipt, 
 	return r, ok
 }
 
-func (s *State) PutCensusResult(sourceID string, check censusCheckpoint, next Cursor, r Receipt) error {
+func (s *State) PutCensusResult(sourceID string, check censusCheckpoint, next Cursor, mode string, r Receipt) error {
 	s.mu.Lock()
+	prev := s.Cursors[sourceID].Census
 	if r.ReceiptID != "" {
 		check.Destination, check.UploadSHA = r.Destination, r.UploadSHA
 		r.SHA256 = check.FileSHA256
 		s.Receipts[censusReceiptKey(sourceID, r.Destination, r.UploadSHA)] = r
 		s.pruneReceiptsLocked()
 	}
+	check.Baseline, check.Chain = s.nextCensusChainLocked(prev, check.Destination, mode, r)
 	next.Census = &check
 	s.Cursors[sourceID] = next.clone()
 	delete(s.Failures, receiptKey(sourceID, check.FileSHA256))
@@ -192,27 +199,78 @@ func (s *State) PutCensusResult(sourceID string, check censusCheckpoint, next Cu
 	return s.Save()
 }
 
-func (s *State) CensusCleanupReceipt(sourceID, fileSHA, destination string) (Receipt, bool) {
+func (s *State) nextCensusChainLocked(prev *censusCheckpoint, destination, mode string, r Receipt) (bool, []string) {
+	sameDestination := prev != nil && prev.Destination == destination
+	if r.ReceiptID == "" {
+		if !sameDestination {
+			return false, nil
+		}
+		return prev.Baseline, slices.Clone(prev.Chain)
+	}
+	if mode == ModeFull {
+		return true, []string{r.ReceiptID}
+	}
+	if !sameDestination {
+		return false, []string{r.ReceiptID}
+	}
+	statuses := s.receiptStatusesLocked()
+	chain := make([]string, 0, len(prev.Chain)+1)
+	for _, id := range prev.Chain {
+		if statuses[id] != "imported" && id != r.ReceiptID {
+			chain = append(chain, id)
+		}
+	}
+	chain = append(chain, r.ReceiptID)
+	if len(chain) > maxCensusChain {
+		return false, chain[len(chain)-maxCensusChain:]
+	}
+	return prev.Baseline, chain
+}
+
+func (s *State) receiptStatusesLocked() map[string]string {
+	statuses := make(map[string]string, len(s.Receipts))
+	for _, r := range s.Receipts {
+		if r.ReceiptID != "" {
+			statuses[r.ReceiptID] = r.Status
+		}
+	}
+	return statuses
+}
+
+func (s *State) censusChainLocked(sourceID, destination string) (pending, broken bool) {
+	p := s.Cursors[sourceID].Census
+	if p == nil || p.Destination != destination || !p.Baseline {
+		return false, true
+	}
+	statuses := s.receiptStatusesLocked()
+	for _, id := range p.Chain {
+		switch st := statuses[id]; {
+		case st == "imported":
+		case receiptPending(st):
+			pending = true
+		default:
+			return pending, true
+		}
+	}
+	return pending, false
+}
+
+func (s *State) CensusNeedsBaseline(sourceID, destination string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var best Receipt
-	found := false
-	for _, r := range s.Receipts {
-		if r.SourceID != sourceID || r.SHA256 != fileSHA || r.Destination != destination {
-			continue
-		}
-		if r.Status != "imported" {
-			return Receipt{}, false
-		}
-		if !found || r.At.After(best.At) {
-			best, found = r, true
-		}
+	_, broken := s.censusChainLocked(sourceID, destination)
+	return broken
+}
+
+func (s *State) CensusCleanupReady(sourceID, fileSHA, destination string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.Cursors[sourceID].Census
+	if p == nil || p.FileSHA256 != fileSHA {
+		return false
 	}
-	if found {
-		return best, true
-	}
-	r, ok := s.Receipts[receiptKey(sourceID, fileSHA)]
-	return r, ok && (r.Destination == "" || r.Destination == destination)
+	pending, broken := s.censusChainLocked(sourceID, destination)
+	return !pending && !broken
 }
 
 func (s *State) LatestReceipt(sourceID string) (Receipt, bool) {
@@ -378,6 +436,17 @@ func (s *State) SetReceiptStatus(receiptID, status string, checked time.Time) er
 		if r.ReceiptID == receiptID {
 			r.Status, r.CheckedAt = status, checked
 			s.Receipts[k] = r
+		}
+	}
+	if status == "imported" {
+		for id, c := range s.Cursors {
+			if c.Census == nil || !slices.Contains(c.Census.Chain, receiptID) {
+				continue
+			}
+			check := *c.Census
+			check.Chain = slices.DeleteFunc(slices.Clone(check.Chain), func(v string) bool { return v == receiptID })
+			c.Census = &check
+			s.Cursors[id] = c
 		}
 	}
 	s.mu.Unlock()

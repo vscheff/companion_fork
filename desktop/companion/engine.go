@@ -354,8 +354,9 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 		uploadCfg := e.Config()
 		_, checked := e.state.CensusResult(fs.SourceID, censusCheckpointFor(uploadCfg, fs.SHA256))
 		_, inBackoff := e.state.Backoff(fs.SourceID, fs.SHA256, now)
+		rebase := forceUpload && e.censusNeedsFull(uploadCfg, fs.SourceID)
 		wantUpload := (uploadCfg.AutoUpload || forceUpload) && uploadCfg.ServerURL != "" &&
-			!checked && (forceUpload || !inBackoff)
+			(!checked || rebase) && (forceUpload || !inBackoff)
 		wantBackup := forceBackup || (cfg.AutoBackup && changed)
 
 		if changed || wantUpload || wantBackup {
@@ -427,7 +428,7 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 	cfg = e.Config()
 	addonFiles := e.reconcileAddons(ctx, cfg, forceUpload)
 
-	if cfg.AutoUpload && cfg.DeviceToken != "" {
+	if (cfg.AutoUpload || cfg.AutoClean) && cfg.DeviceToken != "" {
 		e.refreshReceipts(ctx, cfg, statuses, addonFiles)
 	}
 	addon := e.addonStatus(cfg)
@@ -543,6 +544,18 @@ func (e *Engine) coverWithLatest(sourceID, fileSHA string) bool {
 	return true
 }
 
+func (e *Engine) censusNeedsFull(cfg Config, sourceID string) bool {
+	cur, ok := e.state.Cursor(sourceID)
+	if !ok {
+		return true
+	}
+	destination := censusDestination(cfg.ServerURL, cfg.DeviceID)
+	if cur.Census != nil && cur.Census.Destination != destination {
+		return true
+	}
+	return cfg.AutoClean && e.state.CensusNeedsBaseline(sourceID, destination)
+}
+
 func (e *Engine) uploadCensus(ctx context.Context, snap *Snapshot, sourceID string, forceUpload bool) {
 	cfg := e.Config()
 	if cfg.ServerURL == "" || !(cfg.AutoUpload || forceUpload) {
@@ -550,14 +563,15 @@ func (e *Engine) uploadCensus(ctx context.Context, snap *Snapshot, sourceID stri
 	}
 	label := snap.File.Edition + " / " + snap.File.AccountLabel()
 	check := censusCheckpointFor(cfg, snap.SHA256)
-	if _, ok := e.state.CensusResult(sourceID, check); ok {
+	full := e.censusNeedsFull(cfg, sourceID)
+	if _, ok := e.state.CensusResult(sourceID, check); ok && !(forceUpload && full) {
 		return
 	}
 	m := NewManifest(snap, sourceID)
 	cur, hasCursor := e.state.Cursor(sourceID)
 	var d Delta
 	var err error
-	if hasCursor {
+	if hasCursor && !full {
 		d, err = BuildCensusDelta(snap.Data, cur, cfg.ShareAddons)
 		m.Mode, m.Rows = ModeSession, d.Rows
 	} else {
@@ -576,7 +590,7 @@ func (e *Engine) uploadCensus(ctx context.Context, snap *Snapshot, sourceID stri
 			return
 		}
 	}
-	if err := e.state.PutCensusResult(sourceID, check, d.Next, r); err != nil {
+	if err := e.state.PutCensusResult(sourceID, check, d.Next, m.Mode, r); err != nil {
 		e.logf("error", "Could not save upload state for %s: %v", label, err)
 		return
 	}

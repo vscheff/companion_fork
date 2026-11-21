@@ -441,7 +441,10 @@ func TestEngineSkipsCleanupOfMalformedSavedVariables(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := e.state.PutReceipt(Receipt{SourceID: e.state.SourceID(f.Path), SHA256: snap.SHA256, Status: "imported", At: snap.TakenAt}); err != nil {
+			cfg = e.Config()
+			check := censusCheckpointFor(cfg, snap.SHA256)
+			imported := Receipt{SourceID: e.state.SourceID(f.Path), Status: "imported", ReceiptID: "r1", UploadSHA: snap.SHA256, Mode: ModeFull, Destination: check.Destination, At: snap.TakenAt}
+			if err := e.state.PutCensusResult(imported.SourceID, check, Cursor{}, ModeFull, imported); err != nil {
 				t.Fatal(err)
 			}
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -26,6 +27,7 @@ func (c Cursor) clone() Cursor {
 	c.Hashes = maps.Clone(c.Hashes)
 	if c.Census != nil {
 		checkpoint := *c.Census
+		checkpoint.Chain = slices.Clone(checkpoint.Chain)
 		c.Census = &checkpoint
 	}
 	return c
