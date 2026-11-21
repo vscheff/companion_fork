@@ -70,7 +70,7 @@ func TestCombatLogDiscoveryAndUpload(t *testing.T) {
 		t.Fatalf("combat logs found without the setting: %v", got)
 	}
 	files := DiscoverAddonFiles([]string{forever, retail}, map[string]bool{combatLogKey: true})
-	if len(files) != 1 || files[0].Edition != "forever" || filepath.Base(files[0].Path) != "WoWCombatLog-112126_103937.txt" {
+	if len(files) != 2 || files[0].Edition != "forever" || files[1].Edition != "retail" || filepath.Base(files[0].Path) != "WoWCombatLog-112126_103937.txt" {
 		t.Fatalf("files = %+v", files)
 	}
 	if _, err := TakeCombatLogSnapshot(files[0].SavedVarFile, time.Now()); err != ErrUnstable {

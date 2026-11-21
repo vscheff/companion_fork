@@ -16,7 +16,6 @@ import (
 
 const (
 	combatLogKey      = "combatlog"
-	combatLogEdition  = "forever"
 	combatLogQuiet    = 10 * time.Minute
 	maxCombatLogBytes = 2 << 30
 )
@@ -30,9 +29,6 @@ var (
 const anonymousPlayer = "Player-0-00000000"
 
 func discoverCombatLogs(edDir, edition string) []AddonFile {
-	if edition != combatLogEdition {
-		return nil
-	}
 	dir := filepath.Join(edDir, "Logs")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
