@@ -178,7 +178,7 @@ function renderStatus(s) {
       <td>${esc(getEditionName(f.edition))}</td><td>${esc(accountName(f))}</td>
       <td>${mb(f.bytes)}${cleanupNote(f)}</td><td>${when(f.modTime)}</td><td>${uploadCell(f, s.autoUpload)}</td></tr>`).join("");
   const addonFiles = s.addonFiles || [];
-  const addonNames = {auctionator: "Auctionator", journalator: "Journalator", tsm: "TradeSkillMaster", dungeonjournal: "Dungeon Journal"};
+  const addonNames = {auctionator: "Auctionator", journalator: "Journalator", tsm: "TradeSkillMaster", dungeonjournal: "Dungeon Journal", combatlog: t("settings.combatLog")};
   $("#addon-files-block").hidden = addonFiles.length === 0;
   $("#addon-files").innerHTML = addonFiles.map((f) => `<tr title="${esc(f.path)}">
       <td>${esc(addonNames[f.addon] || f.addon)}${f.character ? `<br><small class="muted">${esc(f.character)}</small>` : ""}</td>
@@ -273,7 +273,7 @@ $("#btn-update").onclick = async () => {
 };
 
 const form = $("#settings");
-const SHARE_KEYS = ["auctionator", "journalator", "tsm", "dungeonjournal"];
+const SHARE_KEYS = ["auctionator", "journalator", "tsm", "dungeonjournal", "combatlog"];
 
 const EXTRAS_DISMISSED_KEY = "wowcensus_extras_banner_dismissed";
 
