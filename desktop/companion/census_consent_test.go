@@ -271,7 +271,7 @@ func TestCensusConsentTransitions(t *testing.T) {
 	if err := e.state.SetReceiptStatus(r.ReceiptID, "imported", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := e.state.CensusCleanupReceipt(restored.SourceID, restored.FileSHA256, destination); ok {
+	if e.state.CensusCleanupReady(restored.SourceID, restored.FileSHA256, destination) {
 		t.Fatal("an imported market-only delta made the original save eligible for cleanup")
 	}
 	setCensusConsent(t, e, nil)

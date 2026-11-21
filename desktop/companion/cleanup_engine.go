@@ -24,10 +24,13 @@ func (e *Engine) maybeClean(cfg Config, fs *FileStatus, backupDir string) bool {
 	if !cfg.AutoClean || fs.SHA256 == "" || fs.LastError != "" || fs.Bytes < int64(cfg.CleanAboveMB)<<20 {
 		return false
 	}
-	r, ok := e.state.CensusCleanupReceipt(fs.SourceID, fs.SHA256, censusDestination(cfg.ServerURL, cfg.DeviceID))
-	if !ok || r.Status != "imported" || e.state.PendingReceipts(fs.SourceID) > 0 {
+	if !e.state.CensusCleanupReady(fs.SourceID, fs.SHA256, censusDestination(cfg.ServerURL, cfg.DeviceID)) {
 		fs.CleanupWait = CleanupWaitImport
 		return false
+	}
+	r, ok := e.state.CensusResult(fs.SourceID, censusCheckpointFor(cfg, fs.SHA256))
+	if !ok || r.ReceiptID == "" {
+		r, _ = e.state.LatestReceipt(fs.SourceID)
 	}
 	now := e.now()
 	key := pathKey(fs.Path)
@@ -89,7 +92,7 @@ func (e *Engine) maybeClean(cfg Config, fs *FileStatus, backupDir string) bool {
 	if cur, ok := e.state.Cursor(fs.SourceID); ok && cur.Census != nil && cur.Census.FileSHA256 == snap.SHA256 {
 		check := *cur.Census
 		check.FileSHA256, check.UploadSHA = newSHA, ""
-		_ = e.state.PutCensusResult(fs.SourceID, check, cur, Receipt{})
+		_ = e.state.PutCensusResult(fs.SourceID, check, cur, "", Receipt{})
 	}
 	rec := Cleanup{CleanupResult: res, At: now.UTC(), Backup: backup}
 	_ = e.state.PutCleanup(fs.SourceID, rec)
