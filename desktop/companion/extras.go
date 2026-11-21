@@ -23,6 +23,7 @@ var ExtraAddons = []ExtraAddon{
 	{Key: "journalator", File: "Journalator.lua", Label: "Journalator"},
 	{Key: "tsm", File: "TradeSkillMaster.lua", Label: "TradeSkillMaster"},
 	{Key: "dungeonjournal", File: "ForeverDungeonJournal.lua", Label: "Dungeon Journal"},
+	{Key: combatLogKey, File: "WoWCombatLog.txt", Label: "Combat logs"},
 }
 
 func extraAddon(key string) (ExtraAddon, bool) {
@@ -46,6 +47,9 @@ func (f AddonFile) Label() string {
 	label := a.Label + " / " + editionLabel(f.Edition)
 	if f.Character != "" {
 		label += " / " + f.Character
+	}
+	if f.Addon == combatLogKey {
+		label += " / " + filepath.Base(f.Path)
 	}
 	return label
 }
@@ -71,6 +75,11 @@ func DiscoverAddonFiles(editionDirs []string, enabled map[string]bool) []AddonFi
 			continue
 		}
 		edition := editionName(ed)
+		if enabled[combatLogKey] {
+			for _, f := range discoverCombatLogs(ed, edition) {
+				add(f)
+			}
+		}
 		n := 0
 		for _, acct := range accounts {
 			if !isAccountDir(acct) {
@@ -80,7 +89,7 @@ func DiscoverAddonFiles(editionDirs []string, enabled map[string]bool) []AddonFi
 			acctDir := filepath.Join(accountsDir, acct.Name())
 			base := SavedVarFile{Root: ed, Edition: edition, Account: acct.Name(), AccountNumber: n}
 			for _, a := range ExtraAddons {
-				if !enabled[a.Key] {
+				if !enabled[a.Key] || a.Key == combatLogKey {
 					continue
 				}
 				if p := filepath.Join(acctDir, "SavedVariables", a.File); regularFile(p) {
@@ -207,6 +216,9 @@ func newCursor(since Cursor) Cursor {
 const maxDecodedBytes = 256 << 20
 
 func BuildAddonUpload(f AddonFile, src []byte, since Cursor) (Delta, error) {
+	if f.Addon == combatLogKey {
+		return combatLogUpload(src, since)
+	}
 	vars, err := readAssignments(src)
 	if err != nil {
 		return Delta{}, fmt.Errorf("the file could not be read: %w", err)

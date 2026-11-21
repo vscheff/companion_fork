@@ -21,7 +21,7 @@ const H = {
 
 const KINDS = new Set(["wowcensus", "addon"]);
 const MODES = new Set(["full", "session"]);
-const ADDONS = new Set(["auctionator", "journalator", "tsm", "dungeonjournal"]);
+const ADDONS = new Set(["auctionator", "journalator", "tsm", "dungeonjournal", "combatlog"]);
 
 const CLIENT_ID = /^[0-9a-f]{32}$/;
 

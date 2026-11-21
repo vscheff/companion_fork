@@ -633,7 +633,11 @@ func (e *Engine) reconcileAddons(ctx context.Context, cfg Config, forceUpload bo
 		_, inBackoff := e.state.Backoff(fs.SourceID, fs.SHA256, now)
 		want := (cfg.AutoUpload || forceUpload) && cfg.ServerURL != "" && (changed || !hasReceipt) && (forceUpload || !inBackoff)
 		if want {
-			snap, err := TakeSnapshot(f.SavedVarFile, now)
+			take := TakeSnapshot
+			if f.Addon == combatLogKey {
+				take = TakeCombatLogSnapshot
+			}
+			snap, err := take(f.SavedVarFile, now)
 			switch {
 			case errors.Is(err, ErrUnstable):
 				fs.LastError = "waiting for the file to settle"
@@ -690,6 +694,9 @@ func (e *Engine) uploadAddon(ctx context.Context, f AddonFile, snap *Snapshot, s
 	a, _ := extraAddon(f.Addon)
 	m := NewManifest(snap, sourceID)
 	m.Kind, m.Addon, m.FileName, m.Rows = KindAddon, f.Addon, a.File, d.Rows
+	if f.Addon == combatLogKey {
+		m.FileName = filepath.Base(f.Path)
+	}
 	m.Realm, m.Character, m.AccountID = f.Realm, f.Character, e.accountID(f.SavedVarFile)
 	if hasCursor {
 		m.Mode = ModeSession
