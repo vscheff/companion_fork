@@ -19,48 +19,41 @@ import (
 )
 
 type trayStrings struct {
-	open    string
-	update  string
-	version string
-	quit    string
+	open   string
+	update string
+	quit   string
 }
 
 var trayTranslations = map[string]trayStrings{
 	"en": {
-		open:    "Open WoWCensus Companion",
-		update:  "Update available",
-		version: "Update to version %s",
-		quit:    "Quit",
+		open:   "Open WoWCensus Companion",
+		update: "Update available",
+		quit:   "Quit",
 	},
 	"ko": {
-		open:    "WoWCensus Companion 열기",
-		update:  "업데이트 가능",
-		version: "%s 버전으로 업데이트",
-		quit:    "종료",
+		open:   "WoWCensus Companion 열기",
+		update: "업데이트 가능",
+		quit:   "종료",
 	},
 	"es": {
-		open:    "Abrir WoWCensus Companion",
-		update:  "Actualización disponible",
-		version: "Actualizar a la versión %s",
-		quit:    "Salir",
+		open:   "Abrir WoWCensus Companion",
+		update: "Actualización disponible",
+		quit:   "Salir",
 	},
 	"de": {
-		open:    "WoWCensus Companion öffnen",
-		update:  "Aktualisierung verfügbar",
-		version: "Auf Version %s aktualisieren",
-		quit:    "Beenden",
+		open:   "WoWCensus Companion öffnen",
+		update: "Aktualisierung verfügbar",
+		quit:   "Beenden",
 	},
 	"fr": {
-		open:    "Ouvrir WoWCensus Companion",
-		update:  "Mise à jour disponible",
-		version: "Mettre à jour vers la version %s",
-		quit:    "Quitter",
+		open:   "Ouvrir WoWCensus Companion",
+		update: "Mise à jour disponible",
+		quit:   "Quitter",
 	},
 	"it": {
-		open:    "Apri WoWCensus Companion",
-		update:  "Aggiornamento disponibile",
-		version: "Aggiorna alla versione %s",
-		quit:    "Esci",
+		open:   "Apri WoWCensus Companion",
+		update: "Aggiornamento disponibile",
+		quit:   "Esci",
 	},
 }
 
@@ -99,6 +92,7 @@ var appIcon []byte
 func init() {
 
 	application.RegisterEvent[companion.Status]("status")
+	application.RegisterEvent[string]("confirm-leave")
 }
 
 func main() {
@@ -156,12 +150,25 @@ func main() {
 	})
 
 	var quitting atomic.Bool
+	var allowMinimise atomic.Bool
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if quitting.Load() {
 			return
 		}
 		e.Cancel()
+		if svc.hasUnsavedChanges() {
+			svc.askToLeave("close")
+			return
+		}
 		win.Hide()
+	})
+	win.OnWindowEvent(events.Common.WindowMinimise, func(*application.WindowEvent) {
+		if allowMinimise.Swap(false) || !svc.hasUnsavedChanges() {
+			return
+		}
+		win.Restore()
+		win.Focus()
+		svc.askToLeave("minimise")
 	})
 
 	show := func() {
@@ -175,6 +182,25 @@ func main() {
 		app.Quit()
 	}
 	svc.quit = quit
+	svc.leave = func(action string) {
+		switch action {
+		case "close":
+			win.Hide()
+		case "minimise":
+			allowMinimise.Store(true)
+			win.Minimise()
+		case "quit":
+			quit()
+		}
+	}
+	quitFromTray := func() {
+		if svc.hasUnsavedChanges() {
+			show()
+			svc.askToLeave("quit")
+			return
+		}
+		quit()
+	}
 
 	menu := application.NewMenu()
 	curLang := engine.Config().Language
@@ -185,18 +211,29 @@ func main() {
 	updateItem := menu.Add(tStr.update).OnClick(func(*application.Context) { show() })
 	updateItem.SetHidden(true)
 	menu.AddSeparator()
-	quitItem := menu.Add(tStr.quit).OnClick(func(*application.Context) { quit() })
+	quitItem := menu.Add(tStr.quit).OnClick(func(*application.Context) { quitFromTray() })
 
+	updateLabel := func(ts trayStrings) string {
+		if latestVersion == "" {
+			return ts.update
+		}
+		return fmt.Sprintf("%s (%s)", ts.update, latestVersion)
+	}
 	updateTrayLabels := func(lang string) {
 		curLang = lang
 		ts := getTrayStrings(curLang)
 		openItem.SetLabel(ts.open)
-		if latestVersion != "" {
-			updateItem.SetLabel(fmt.Sprintf(ts.version, latestVersion))
-		} else {
-			updateItem.SetLabel(ts.update)
-		}
+		updateItem.SetLabel(updateLabel(ts))
 		quitItem.SetLabel(ts.quit)
+		menu.Update()
+	}
+	setTrayUpdate := func(version string) {
+		if version == latestVersion {
+			return
+		}
+		latestVersion = version
+		updateItem.SetLabel(updateLabel(getTrayStrings(curLang)))
+		updateItem.SetHidden(version == "")
 		menu.Update()
 	}
 
@@ -206,13 +243,17 @@ func main() {
 		})
 	}
 
+	svc.onStatus = func(st companion.Status) {
+		version := ""
+		if st.Update.Available {
+			version = st.Update.Version
+		}
+		application.InvokeAsync(func() { setTrayUpdate(version) })
+	}
+
 	engine.OnUpdateFound(func(version string) {
 		application.InvokeSync(func() {
-			latestVersion = version
-			ts := getTrayStrings(curLang)
-			updateItem.SetLabel(fmt.Sprintf(ts.version, version))
-			updateItem.SetHidden(false)
-			menu.Update()
+			setTrayUpdate(version)
 			show()
 		})
 	})

@@ -52,7 +52,11 @@ label.check { display: flex; align-items: center; gap: 8px; }
 input:not([type=checkbox]), textarea, select { display: block; width: 100%; margin-top: 4px; padding: 7px 9px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
 select option { background: var(--panel); color: var(--text); }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 12px; }
-.save-row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+.save-row { position: fixed; right: 20px; bottom: 16px; z-index: 10; display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
+.save-row #save-msg:empty { display: none; }
+.save-row.dirty { border-color: #5a4a1e; }
+.save-row.dirty #save-msg { color: var(--warn); }
+#tab-settings { padding-bottom: 56px; }
 .error { color: var(--err); }
 .detected { padding-left: 18px; }
 .detected small, #report small { color: var(--muted); word-break: break-all; }
@@ -75,8 +79,12 @@ h2 { font-size: 15px; margin: 18px 0 6px; }
 .banner.extras > span { flex: 1; }
 .banner.extras b { color: var(--ok); }
 .update-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.app-version { position: fixed; right: 10px; bottom: 6px; font-size: 11px; color: var(--muted); pointer-events: none; user-select: none; }
-main { padding-bottom: 28px; }
+.app-version { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--muted); user-select: none; }
+.leave-dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; max-width: 380px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
+.leave-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.leave-dialog h2 { margin: 0 0 6px; }
+.leave-dialog p { margin: 0 0 14px; }
+.leave-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .update-row > * { margin: 0; }
 #tab-about p { margin: 0 0 10px; line-height: 1.5; }
 #tab-about p:last-child { margin-bottom: 0; }

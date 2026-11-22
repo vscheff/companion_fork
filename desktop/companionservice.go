@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -16,6 +17,9 @@ type CompanionService struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	onLanguageChange func(string)
+	onStatus         func(companion.Status)
+	leave            func(action string)
+	unsaved          atomic.Bool
 }
 
 type Settings struct {
@@ -34,6 +38,9 @@ func (s *CompanionService) ServiceStartup(ctx context.Context, _ application.Ser
 	s.engine.OnChange(func(st companion.Status) {
 		if app := application.Get(); app != nil {
 			app.Event.Emit("status", st)
+		}
+		if s.onStatus != nil {
+			s.onStatus(st)
 		}
 	})
 	s.ctx, s.cancel = context.WithCancel(context.Background())
@@ -121,4 +128,25 @@ func (s *CompanionService) Version() string {
 
 func (s *CompanionService) InstallAddon() (string, error) {
 	return s.engine.InstallAddon(s.ctx)
+}
+
+func (s *CompanionService) SetUnsavedChanges(unsaved bool) {
+	s.unsaved.Store(unsaved)
+}
+
+func (s *CompanionService) hasUnsavedChanges() bool {
+	return s.unsaved.Load()
+}
+
+func (s *CompanionService) askToLeave(action string) {
+	if app := application.Get(); app != nil {
+		app.Event.Emit("confirm-leave", action)
+	}
+}
+
+func (s *CompanionService) ContinueLeave(action string) {
+	s.unsaved.Store(false)
+	if s.leave != nil {
+		s.leave(action)
+	}
 }
