@@ -25,6 +25,7 @@ You don't need an account, a password or a token.
 - what the WoWCensus add-on recorded: character names, realms, races, classes and levels it saw through `/who`. The first upload is the whole save; after that, each `/reload` or logout sends only what is new since the last upload.
 - only if you tick them under **Other add-ons** in Settings: auction prices and your own sales from Auctionator, Journalator and TradeSkillMaster, and your Dungeon Journal progress. Other players' names, mail and chat text are removed on your computer before anything is sent.
 - only if you tick **Combat logs**: what mobs did in your combat logs from any WoW edition (level, health, armor and attacks) for the bestiary on wowcensus.io. The app keeps only mob events and removes every player name and ID on your computer first. It needs Advanced Combat Logging on and `/combatlog` typed in game, and sends a log once WoW has stopped writing to it for 10 minutes.
+- **Delete old combat logs** (off by default): WoW never deletes its combat logs, so they pile up. With this on, the app deletes a log once wowcensus.io has imported it and it is older than the cleanup window (14 days), only while WoW is closed. The newest log in each Logs folder is always kept. Leave it off if you also upload logs to other sites.
 
 **Never shared:**
 - your Battle.net account or login;

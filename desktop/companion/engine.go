@@ -428,9 +428,10 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 	cfg = e.Config()
 	addonFiles := e.reconcileAddons(ctx, cfg, forceUpload)
 
-	if (cfg.AutoUpload || cfg.AutoClean) && cfg.DeviceToken != "" {
+	if (cfg.AutoUpload || cfg.AutoClean || cfg.CleanCombatLogs) && cfg.DeviceToken != "" {
 		e.refreshReceipts(ctx, cfg, statuses, addonFiles)
 	}
+	addonFiles = e.pruneCombatLogs(cfg, addonFiles)
 	addon := e.addonStatus(cfg)
 
 	e.mu.Lock()
@@ -746,6 +747,11 @@ func (e *Engine) Report() MaintenanceReport {
 			cfg.CleanAboveMB, cfg.CleanKeepDays))
 	} else {
 		rep.Notes = append(rep.Notes, "Automatic cleanup is off, so your WoW files are never modified.")
+	}
+	if cfg.CleanCombatLogs {
+		rep.Notes = append(rep.Notes, fmt.Sprintf(
+			"Old combat logs are deleted: a log wowcensus.io has imported is removed once it is %d days old, while WoW is closed. The newest log in each Logs folder is always kept.",
+			cfg.CleanKeepDays))
 	}
 	return rep
 }

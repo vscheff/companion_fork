@@ -19,12 +19,13 @@ type CompanionService struct {
 }
 
 type Settings struct {
-	AutoUpload   bool     `json:"autoUpload"`
-	StartAtLogin bool     `json:"startAtLogin"`
-	AutoClean    bool     `json:"autoClean"`
-	WoWRoots     []string `json:"wowRoots"`
-	Registered   bool     `json:"registered"`
-	Language     string   `json:"language,omitempty"`
+	AutoUpload      bool     `json:"autoUpload"`
+	StartAtLogin    bool     `json:"startAtLogin"`
+	AutoClean       bool     `json:"autoClean"`
+	CleanCombatLogs bool     `json:"cleanCombatLogs"`
+	WoWRoots        []string `json:"wowRoots"`
+	Registered      bool     `json:"registered"`
+	Language        string   `json:"language,omitempty"`
 
 	ShareAddons map[string]bool `json:"shareAddons"`
 }
@@ -51,13 +52,14 @@ func (s *CompanionService) ServiceShutdown() error {
 func (s *CompanionService) GetSettings() Settings {
 	cfg := s.engine.Config()
 	return Settings{
-		AutoUpload:   cfg.AutoUpload,
-		StartAtLogin: cfg.StartAtLogin && companion.StartAtLoginEnabled(),
-		AutoClean:    cfg.AutoClean,
-		WoWRoots:     cfg.WoWRoots,
-		Registered:   cfg.DeviceToken != "",
-		Language:     cfg.Language,
-		ShareAddons:  cfg.ShareAddons,
+		AutoUpload:      cfg.AutoUpload,
+		StartAtLogin:    cfg.StartAtLogin && companion.StartAtLoginEnabled(),
+		AutoClean:       cfg.AutoClean,
+		CleanCombatLogs: cfg.CleanCombatLogs,
+		WoWRoots:        cfg.WoWRoots,
+		Registered:      cfg.DeviceToken != "",
+		Language:        cfg.Language,
+		ShareAddons:     cfg.ShareAddons,
 	}
 }
 
@@ -66,6 +68,7 @@ func (s *CompanionService) SaveSettings(in Settings) (Settings, error) {
 	cfg.AutoUpload = in.AutoUpload
 	cfg.StartAtLogin = in.StartAtLogin
 	cfg.AutoClean = in.AutoClean
+	cfg.CleanCombatLogs = in.CleanCombatLogs
 	cfg.WoWRoots = in.WoWRoots
 	cfg.Language = in.Language
 	if in.ShareAddons != nil {

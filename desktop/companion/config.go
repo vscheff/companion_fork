@@ -34,6 +34,8 @@ type Config struct {
 	CleanKeepDays int  `json:"cleanKeepDays"`
 	CleanAboveMB  int  `json:"cleanAboveMB"`
 
+	CleanCombatLogs bool `json:"cleanCombatLogs"`
+
 	WoWRoots []string `json:"wowRoots"`
 
 	ServerURL   string `json:"serverUrl"`

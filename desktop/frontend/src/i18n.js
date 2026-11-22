@@ -109,6 +109,8 @@ const translations = {
       otherAddonsHint: "Also share market and dungeon data from these add-ons. Other players' names, mail and chat text are removed on this computer before anything is sent. Only the ones you tick are shared.",
       combatLog: "Combat logs",
       combatLogHint: "Shares what mobs did in your combat logs (level, health, armor and attacks) for the bestiary on wowcensus.io. Every player name and ID is removed on this computer first. Needs Advanced Combat Logging (System > Network) and /combatlog in game. A log is sent once WoW stops writing to it.",
+      cleanCombatLogs: "Delete old combat logs",
+      cleanCombatLogsHint: "WoW never deletes combat logs. This removes a log once wowcensus.io has imported it and it is two weeks old, while WoW is closed. Keep it off if you upload logs to other sites.",
     },
     cleanup: {
       done: "Cleaned {before} → {after} on {when}",
@@ -247,6 +249,8 @@ const translations = {
       otherAddonsHint: "이 애드온들의 경매장·던전 데이터도 공유합니다. 다른 플레이어의 이름, 우편과 채팅 내용은 전송 전에 이 컴퓨터에서 삭제됩니다. 선택한 애드온만 공유됩니다.",
       combatLog: "전투 기록",
       combatLogHint: "wowcensus.io 몬스터 도감을 위해 전투 기록에서 몬스터의 레벨, 생명력, 방어도, 공격 정보를 공유합니다. 모든 플레이어 이름과 ID는 먼저 이 컴퓨터에서 삭제됩니다. 고급 전투 기록(시스템 > 네트워크)과 게임 내 /combatlog가 필요합니다. WoW가 기록을 마치면 전송됩니다.",
+      cleanCombatLogs: "오래된 전투 기록 삭제",
+      cleanCombatLogsHint: "WoW는 전투 기록을 삭제하지 않습니다. wowcensus.io가 가져간 지 2주가 지난 기록을 WoW가 종료된 상태에서 삭제합니다. 다른 사이트에도 기록을 올린다면 끄세요.",
     },
     cleanup: {
       done: "{when}에 {before} → {after}(으)로 정리됨",
@@ -385,6 +389,8 @@ const translations = {
       otherAddonsHint: "Comparte también los datos de mercado y de mazmorras de estos addons. Los nombres de otros jugadores y el texto del correo y del chat se eliminan en este equipo antes de enviar nada. Solo se comparten los que marques.",
       combatLog: "Registros de combate",
       combatLogHint: "Comparte lo que hicieron los enemigos en tus registros de combate (nivel, salud, armadura y ataques) para el bestiario de wowcensus.io. Todos los nombres e ID de jugadores se eliminan antes en este equipo. Requiere el registro de combate avanzado (Sistema > Red) y /combatlog en el juego. Cada registro se envía cuando WoW deja de escribir en él.",
+      cleanCombatLogs: "Eliminar registros de combate antiguos",
+      cleanCombatLogsHint: "WoW nunca borra los registros de combate. Esto elimina un registro cuando wowcensus.io ya lo ha importado y tiene dos semanas, con WoW cerrado. Déjalo desactivado si subes registros a otros sitios.",
     },
     cleanup: {
       done: "Reducido de {before} a {after} el {when}",
@@ -523,6 +529,8 @@ const translations = {
       otherAddonsHint: "Teilt auch Markt- und Dungeondaten dieser Add-ons. Namen anderer Spieler sowie Post- und Chattexte werden vor dem Senden auf diesem Computer entfernt. Geteilt wird nur, was du ankreuzt.",
       combatLog: "Kampflogs",
       combatLogHint: "Teilt, was Gegner in deinen Kampflogs getan haben (Stufe, Gesundheit, Rüstung und Angriffe), für das Bestiarium auf wowcensus.io. Alle Spielernamen und IDs werden vorher auf diesem Computer entfernt. Benötigt erweiterte Kampfaufzeichnung (System > Netzwerk) und /combatlog im Spiel. Ein Log wird gesendet, sobald WoW nicht mehr hineinschreibt.",
+      cleanCombatLogs: "Alte Kampflogs löschen",
+      cleanCombatLogsHint: "WoW löscht Kampflogs nie. Dies entfernt ein Log, sobald wowcensus.io es importiert hat und es zwei Wochen alt ist, bei geschlossenem WoW. Lass es aus, wenn du Logs auch auf andere Seiten hochlädst.",
     },
     cleanup: {
       done: "Am {when} von {before} auf {after} verkleinert",
@@ -661,6 +669,8 @@ const translations = {
       otherAddonsHint: "Partage aussi les données de marché et de donjons de ces addons. Les noms des autres joueurs et le texte du courrier et du chat sont retirés sur cet ordinateur avant tout envoi. Seuls les addons cochés sont partagés.",
       combatLog: "Journaux de combat",
       combatLogHint: "Partage ce que les monstres ont fait dans vos journaux de combat (niveau, vie, armure et attaques) pour le bestiaire de wowcensus.io. Tous les noms et identifiants de joueurs sont d'abord supprimés sur cet ordinateur. Nécessite la journalisation avancée du combat (Système > Réseau) et /combatlog en jeu. Un journal est envoyé quand WoW a fini d'y écrire.",
+      cleanCombatLogs: "Supprimer les anciens journaux de combat",
+      cleanCombatLogsHint: "WoW ne supprime jamais les journaux de combat. Ceci supprime un journal une fois importé par wowcensus.io et vieux de deux semaines, quand WoW est fermé. Laissez désactivé si vous envoyez vos journaux sur d'autres sites.",
     },
     cleanup: {
       done: "Réduit de {before} à {after} le {when}",
@@ -799,6 +809,8 @@ const translations = {
       otherAddonsHint: "Condivide anche i dati di mercato e dei dungeon di questi addon. I nomi degli altri giocatori e i testi di posta e chat vengono rimossi su questo computer prima dell'invio. Vengono condivisi solo quelli che selezioni.",
       combatLog: "Registri di combattimento",
       combatLogHint: "Condivide ciò che i mostri hanno fatto nei tuoi registri di combattimento (livello, salute, armatura e attacchi) per il bestiario di wowcensus.io. Ogni nome e ID dei giocatori viene rimosso prima su questo computer. Richiede la registrazione avanzata del combattimento (Sistema > Rete) e /combatlog nel gioco. Un registro viene inviato quando WoW smette di scriverci.",
+      cleanCombatLogs: "Elimina i vecchi registri di combattimento",
+      cleanCombatLogsHint: "WoW non elimina mai i registri di combattimento. Questa opzione rimuove un registro quando wowcensus.io lo ha importato e ha due settimane, a WoW chiuso. Lasciala disattivata se carichi i registri anche su altri siti.",
     },
     cleanup: {
       done: "Ridotto da {before} a {after} il {when}",
