@@ -31,9 +31,17 @@ const when = (tVal) => {
   return d.toLocaleDateString(loc) + " " + d.toLocaleTimeString(loc, {hour: "2-digit", minute: "2-digit"});
 };
 
+function activateTab(name) {
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + name));
+}
+
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
-  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
-  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + b.dataset.tab));
+  if (b.dataset.tab !== "settings" && isDirty()) {
+    confirmLeave({tab: b.dataset.tab});
+    return;
+  }
+  activateTab(b.dataset.tab);
 }));
 
 const accountName = (f) => t("table.accountN", { n: f.accountNumber || 1 });
@@ -316,6 +324,8 @@ function fillSettings(v) {
   if (lastStatus) {
     renderStatus(lastStatus);
   }
+  savedSnapshot = snapshot();
+  updateDirty();
 }
 
 function readSettings() {
@@ -336,15 +346,96 @@ function msg(text, isErr) {
   m.className = isErr ? "error" : "muted";
 }
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
+let savedSnapshot = null;
+let reportedDirty = false;
+let showingUnsaved = false;
+
+function snapshot() {
+  const v = readSettings();
+  delete v.language;
+  return JSON.stringify(v);
+}
+
+function isDirty() {
+  return savedSnapshot !== null && snapshot() !== savedSnapshot;
+}
+
+function updateDirty() {
+  const dirty = isDirty();
+  $(".save-row").classList.toggle("dirty", dirty);
+  if (dirty) {
+    msg(t("settings.unsaved"));
+    showingUnsaved = true;
+  } else if (showingUnsaved) {
+    msg("");
+    showingUnsaved = false;
+  }
+  if (dirty !== reportedDirty) {
+    reportedDirty = dirty;
+    CompanionService.SetUnsavedChanges(dirty).catch(() => {});
+  }
+}
+
+form.addEventListener("input", updateDirty);
+form.addEventListener("change", updateDirty);
+
+async function saveSettings() {
   try {
     const saved = await CompanionService.SaveSettings(readSettings());
     fillSettings(saved);
     msg(t("settings.saved"));
+    showingUnsaved = false;
+    return true;
   } catch (err) {
     msg(String(err?.message || err), true);
+    showingUnsaved = false;
+    return false;
   }
+}
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  saveSettings();
+});
+
+const leaveDialog = $("#leave-dialog");
+let pendingLeave = null;
+
+function confirmLeave(target) {
+  pendingLeave = target;
+  activateTab("settings");
+  if (!leaveDialog.open) leaveDialog.showModal();
+}
+
+function finishLeave(target) {
+  if (target.tab) activateTab(target.tab);
+  else if (target.action) CompanionService.ContinueLeave(target.action).catch(() => {});
+}
+
+leaveDialog.addEventListener("cancel", () => { pendingLeave = null; });
+
+leaveDialog.querySelectorAll("[data-leave]").forEach((b) => b.addEventListener("click", async () => {
+  const target = pendingLeave;
+  const choice = b.dataset.leave;
+  leaveDialog.close();
+  pendingLeave = null;
+  if (!target || choice === "stay") return;
+  if (choice === "save") {
+    if (!(await saveSettings())) return;
+  } else {
+    fillSettings(await CompanionService.GetSettings());
+    msg("");
+  }
+  finishLeave(target);
+}));
+
+Events.On("confirm-leave", (ev) => {
+  const action = ev.data;
+  if (!isDirty()) {
+    CompanionService.ContinueLeave(action).catch(() => {});
+    return;
+  }
+  confirmLeave({action});
 });
 
 $("#language-select").addEventListener("change", async (e) => {
