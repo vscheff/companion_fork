@@ -307,6 +307,7 @@ function fillSettings(v) {
   form.elements.autoUpload.checked = !!v.autoUpload;
   form.elements.startAtLogin.checked = !!v.startAtLogin;
   form.elements.autoClean.checked = !!v.autoClean;
+  form.elements.cleanCombatLogs.checked = !!v.cleanCombatLogs;
   for (const key of SHARE_KEYS) form.elements["share-" + key].checked = !!v.shareAddons?.[key];
   form.elements.wowRoots.value = (v.wowRoots || []).join("\n");
   const lang = v.language || getStoredLanguage() || "auto";
@@ -322,6 +323,7 @@ function readSettings() {
     autoUpload: form.elements.autoUpload.checked,
     startAtLogin: form.elements.startAtLogin.checked,
     autoClean: form.elements.autoClean.checked,
+    cleanCombatLogs: form.elements.cleanCombatLogs.checked,
     shareAddons: Object.fromEntries(SHARE_KEYS.map((key) => [key, form.elements["share-" + key].checked])),
     wowRoots: form.elements.wowRoots.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     language: form.elements.language.value,
