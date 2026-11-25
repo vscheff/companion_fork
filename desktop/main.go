@@ -96,6 +96,7 @@ func init() {
 }
 
 func main() {
+	configureWebKit()
 	relaunch, installed, err := companion.InstallToUserHome(os.Args[1:])
 	if err != nil {
 		log.Fatal(err)
