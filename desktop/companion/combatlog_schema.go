@@ -291,34 +291,59 @@ func matchesCombatSuffix(fields []string, suffixes []combatFields) bool {
 	return false
 }
 
-func filterCombatRecord(fields []string, version string, players *combatPlayers) bool {
+type combatRecordResult int
+
+const (
+	combatRecordInvalid combatRecordResult = iota
+	combatRecordIgnored
+	combatRecordKept
+)
+
+func filterCombatRecord(fields []string, version string, players *combatPlayers) combatRecordResult {
 	event := fields[0]
 	switch event {
 	case "COMBAT_LOG_VERSION":
-		return len(fields) == 8 && combatAdvancedWidths(fields[1]) != nil && fields[2] == "ADVANCED_LOG_ENABLED" && fields[3] == "1" &&
+		if len(fields) == 8 && combatAdvancedWidths(fields[1]) != nil && fields[2] == "ADVANCED_LOG_ENABLED" && fields[3] == "1" &&
 			strings.TrimPrefix(fields[4], " ") == "BUILD_VERSION" && combatBuildRe.MatchString(fields[5]) &&
-			fields[6] == "PROJECT_ID" && combatUint(fields[7])
+			fields[6] == "PROJECT_ID" && combatUint(fields[7]) {
+			return combatRecordKept
+		}
+		return combatRecordInvalid
 	case "MAP_CHANGE":
-		return combatMap.matches(fields[1:])
+		if combatMap.matches(fields[1:]) {
+			return combatRecordKept
+		}
+		return combatRecordInvalid
+	case "COMBATANT_INFO", "EMOTE":
+		if len(fields) > 1 && fields[1] != "" {
+			return combatRecordIgnored
+		}
+		return combatRecordInvalid
 	}
 	layout := combatLayout(event)
 	isAbsorb := event == "SPELL_ABSORBED" || event == "SPELL_HEAL_ABSORBED"
 	if len(fields) < 9 || layout.suffixes == nil && !isAbsorb {
-		return false
+		return combatRecordInvalid
 	}
 	source, validSource := filterCombatActor(fields[1:5], players)
 	target, validTarget := filterCombatActor(fields[5:9], players)
-	if !validSource || !validTarget || source.conflictsWith(target) ||
-		!strings.HasPrefix(source.guid, "Creature-") && !strings.HasPrefix(target.guid, "Creature-") {
-		return false
+	if !validSource || !validTarget || source.conflictsWith(target) {
+		return combatRecordInvalid
+	}
+	result := combatRecordKept
+	if !strings.HasPrefix(source.guid, "Creature-") && !strings.HasPrefix(target.guid, "Creature-") {
+		result = combatRecordIgnored
 	}
 	details := fields[9:]
 	if isAbsorb {
-		return filterCombatAbsorb(details, event == "SPELL_HEAL_ABSORBED", source, target, players)
+		if filterCombatAbsorb(details, event == "SPELL_HEAL_ABSORBED", source, target, players) {
+			return result
+		}
+		return combatRecordInvalid
 	}
 	if layout.spell {
 		if len(details) < 3 || !combatSpell.matches(details[:3]) {
-			return false
+			return combatRecordInvalid
 		}
 		details = details[3:]
 	}
@@ -329,9 +354,12 @@ func filterCombatRecord(fields []string, version string, players *combatPlayers)
 		if event == "SPELL_CAST_FAILED" {
 			details[0] = `""`
 		}
-		return true
+		return result
 	}
-	return layout.advanced && filterCombatAdvanced(details, layout.suffixes, version, source, target)
+	if layout.advanced && filterCombatAdvanced(details, layout.suffixes, version, source, target) {
+		return result
+	}
+	return combatRecordInvalid
 }
 
 func (a combatActor) conflictsWith(b combatActor) bool {

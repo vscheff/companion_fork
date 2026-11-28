@@ -30,6 +30,10 @@ type Receipt struct {
 
 func receiptPending(status string) bool { return status == "queued" || status == "stored" }
 
+func (r Receipt) pollableAt(destination string) bool {
+	return destination == "" || r.Destination == "" || r.Destination == destination
+}
+
 type censusCheckpoint struct {
 	FileSHA256  string        `json:"fileSha256"`
 	Consent     marketConsent `json:"consent"`
@@ -80,8 +84,9 @@ type Cleanup struct {
 }
 
 type seenFile struct {
-	Sig    FileSig `json:"sig"`
-	SHA256 string  `json:"sha256"`
+	Sig                   FileSig `json:"sig"`
+	SHA256                string  `json:"sha256"`
+	CombatLogSourceSHA256 string  `json:"combatLogSourceSha256,omitempty"`
 }
 
 const maxReceipts = 2000
@@ -350,8 +355,12 @@ func (s *State) SeenSig(path string) (seenFile, bool) {
 }
 
 func (s *State) SetSeen(path string, sig FileSig, sha string) error {
+	return s.setSeen(path, seenFile{Sig: sig, SHA256: sha})
+}
+
+func (s *State) setSeen(path string, seen seenFile) error {
 	s.mu.Lock()
-	s.Seen[pathKey(path)] = seenFile{Sig: sig, SHA256: sha}
+	s.Seen[pathKey(path)] = seen
 	s.mu.Unlock()
 	return s.Save()
 }
@@ -402,12 +411,12 @@ type receiptCheck struct {
 	CheckedAt time.Time
 }
 
-func (s *State) ReceiptsToCheck(now time.Time, every time.Duration, limit int) []receiptCheck {
+func (s *State) ReceiptsToCheck(now time.Time, every time.Duration, limit int, destination string) []receiptCheck {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	byID := map[string]receiptCheck{}
 	for _, r := range s.Receipts {
-		if r.ReceiptID == "" || !receiptPending(r.Status) || now.Sub(r.CheckedAt) < every {
+		if r.ReceiptID == "" || !r.pollableAt(destination) || !receiptPending(r.Status) || now.Sub(r.CheckedAt) < every {
 			continue
 		}
 		if c, ok := byID[r.ReceiptID]; !ok || r.CheckedAt.Before(c.CheckedAt) {
@@ -431,16 +440,20 @@ func (s *State) ReceiptsToCheck(now time.Time, every time.Duration, limit int) [
 }
 
 func (s *State) SetReceiptStatus(receiptID, status string, checked time.Time) error {
+	return s.setReceiptStatus(receiptID, status, checked, "")
+}
+
+func (s *State) setReceiptStatus(receiptID, status string, checked time.Time, destination string) error {
 	s.mu.Lock()
 	for k, r := range s.Receipts {
-		if r.ReceiptID == receiptID {
+		if r.ReceiptID == receiptID && r.pollableAt(destination) {
 			r.Status, r.CheckedAt = status, checked
 			s.Receipts[k] = r
 		}
 	}
 	if status == "imported" {
 		for id, c := range s.Cursors {
-			if c.Census == nil || !slices.Contains(c.Census.Chain, receiptID) {
+			if c.Census == nil || destination != "" && c.Census.Destination != destination || !slices.Contains(c.Census.Chain, receiptID) {
 				continue
 			}
 			check := *c.Census

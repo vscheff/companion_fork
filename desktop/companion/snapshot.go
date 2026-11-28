@@ -25,6 +25,8 @@ type Snapshot struct {
 	SHA256  string
 	Sig     FileSig
 	TakenAt time.Time
+
+	combatLogSourceSHA256 string
 }
 
 func statSig(path string) (FileSig, error) {

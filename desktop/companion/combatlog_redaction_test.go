@@ -325,4 +325,27 @@ func TestFilterCombatLogReportsUnsupportedVersion(t *testing.T) {
 	safe := combatRedactionRecord("SPELL_CAST_START", redactedSource, redactionNPC, redactionSpell)
 	assertFilteredCombatLog(t, unknown+cast+redactionHeader+cast, redactionHeader+safe, 1)
 	assertFilteredCombatLog(t, strings.Replace(redactionHeader, "ENABLED,1", "ENABLED,0", 1)+cast, "", 0)
+	t.Run("mixed version cleanup", func(t *testing.T) {
+		omitted := combatRedactionRecord("SWING_MISSED", redactionNPC, redactionTarget, "PARRY,nil")
+		raw := unknown + omitted + redactionHeader + cast
+		h := newCombatLogCleanupHarness(t, raw)
+		h.scan()
+		h.checkUpload(redactionHeader + safe)
+		h.checkReceipt("queued")
+		h.checkSource(raw)
+
+		h.restart()
+		h.poll("stored")
+		h.checkReceipt("stored")
+		h.checkSource(raw)
+
+		h.poll("imported")
+		h.checkReceipt("imported")
+		h.checkSource(raw)
+
+		h.restart()
+		h.scan()
+		h.checkSource(raw)
+		h.checkUpload(redactionHeader + safe)
+	})
 }

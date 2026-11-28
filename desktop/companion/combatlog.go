@@ -50,35 +50,60 @@ func FilterCombatLog(r io.Reader) ([]byte, int, error) {
 }
 
 func filterCombatLog(r io.Reader, census combatCensus) ([]byte, int, error) {
+	export, err := exportCombatLog(r, census)
+	return export.data, export.events, err
+}
+
+type combatLogExport struct {
+	data     []byte
+	events   int
+	complete bool
+}
+
+func exportCombatLog(r io.Reader, census combatCensus) (combatLogExport, error) {
 	players := newCombatPlayers(census)
 	br := bufio.NewReaderSize(r, 1<<20)
 	var out bytes.Buffer
 	var version, unsupported string
 	events := 0
+	complete := true
 	for readErr := error(nil); readErr == nil; {
 		var line string
 		line, readErr = br.ReadString('\n')
 		if readErr != nil && readErr != io.EOF {
-			return nil, 0, readErr
+			return combatLogExport{}, readErr
 		}
 		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		if strings.TrimSpace(strings.TrimPrefix(line, "\ufeff")) == "" {
+			continue
+		}
 		stamp, payload, ok := strings.Cut(line, "  ")
 		if !ok {
+			complete = false
 			continue
 		}
 		event, _, _ := strings.Cut(payload, ",")
 		if event == "COMBAT_LOG_VERSION" {
 			version = ""
 		} else if version == "" {
+			complete = false
 			continue
 		}
 		stamp = strings.TrimPrefix(stamp, "\ufeff")
 		var fields [maxCombatFields]string
 		f := splitCombatFields(payload, fields[:0])
-		if f != nil && version != "" && combatTimestampRe.MatchString(stamp) {
-			players.observe(f)
+		result := combatRecordInvalid
+		if f != nil && combatTimestampRe.MatchString(stamp) {
+			if version != "" {
+				players.observe(f)
+			}
+			result = filterCombatRecord(f, version, players)
 		}
-		if f == nil || !combatTimestampRe.MatchString(stamp) || !filterCombatRecord(f, version, players) {
+		switch result {
+		case combatRecordIgnored:
+			continue
+		case combatRecordInvalid:
+			complete = false
 			if event == "COMBAT_LOG_VERSION" && len(f) > 1 && combatUint(f[1]) && combatAdvancedWidths(f[1]) == nil {
 				unsupported = f[1]
 			}
@@ -102,11 +127,11 @@ func filterCombatLog(r io.Reader, census combatCensus) ([]byte, int, error) {
 	}
 	if events == 0 {
 		if unsupported != "" {
-			return nil, 0, fmt.Errorf("combat log format %s is not supported yet; update the companion", unsupported)
+			return combatLogExport{}, fmt.Errorf("combat log format %s is not supported yet; update the companion", unsupported)
 		}
-		return nil, 0, nil
+		return combatLogExport{}, nil
 	}
-	return players.expand(out.Bytes()), events, nil
+	return combatLogExport{data: players.expand(out.Bytes()), events: events, complete: complete}, nil
 }
 
 func TakeCombatLogSnapshot(f SavedVarFile, now time.Time) (*Snapshot, error) {
@@ -125,7 +150,9 @@ func TakeCombatLogSnapshot(f SavedVarFile, now time.Time) (*Snapshot, error) {
 		return nil, err
 	}
 	defer fh.Close()
-	data, _, err := filterCombatLog(io.LimitReader(fh, before.Size), loadCombatCensus(f.Root))
+	r := &io.LimitedReader{R: fh, N: before.Size}
+	sourceHash := sha256.New()
+	export, err := exportCombatLog(io.TeeReader(r, sourceHash), loadCombatCensus(f.Root))
 	if err != nil {
 		return nil, err
 	}
@@ -133,11 +160,15 @@ func TakeCombatLogSnapshot(f SavedVarFile, now time.Time) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !after.Equal(before) {
+	if r.N != 0 || !after.Equal(before) {
 		return nil, ErrUnstable
 	}
-	sum := sha256.Sum256(data)
-	return &Snapshot{File: f, Data: data, SHA256: hex.EncodeToString(sum[:]), Sig: after, TakenAt: now.UTC()}, nil
+	sum := sha256.Sum256(export.data)
+	snap := &Snapshot{File: f, Data: export.data, SHA256: hex.EncodeToString(sum[:]), Sig: after, TakenAt: now.UTC()}
+	if export.complete {
+		snap.combatLogSourceSHA256 = hex.EncodeToString(sourceHash.Sum(nil))
+	}
+	return snap, nil
 }
 
 func combatLogUpload(src []byte, since Cursor) (Delta, error) {

@@ -431,7 +431,7 @@ func (e *Engine) reconcile(ctx context.Context, a action) {
 	if (cfg.AutoUpload || cfg.AutoClean || cfg.CleanCombatLogs) && cfg.DeviceToken != "" {
 		e.refreshReceipts(ctx, cfg, statuses, addonFiles)
 	}
-	addonFiles = e.pruneCombatLogs(cfg, addonFiles)
+	addonFiles = e.pruneCombatLogs(e.Config(), addonFiles)
 	addon := e.addonStatus(cfg)
 
 	e.mu.Lock()
@@ -495,7 +495,7 @@ func (e *Engine) send(ctx context.Context, cfg Config, m Manifest, data []byte, 
 		}
 		return Receipt{}, err
 	}
-	if m.Kind == KindCensus {
+	if m.Kind == KindCensus || m.Addon == combatLogKey {
 		r.Destination = destination
 	}
 	return r, nil
@@ -646,7 +646,10 @@ func (e *Engine) reconcileAddons(ctx context.Context, cfg Config, forceUpload bo
 				fs.LastError = err.Error()
 			default:
 				fs.SHA256 = snap.SHA256
-				if changed {
+				if f.Addon == combatLogKey {
+					fs.Bytes, fs.ModTime = snap.Sig.Size, snap.Sig.ModTime
+					_ = e.state.setSeen(f.Path, seenFile{Sig: snap.Sig, SHA256: snap.SHA256, CombatLogSourceSHA256: snap.combatLogSourceSHA256})
+				} else if changed {
 					_ = e.state.SetSeen(f.Path, snap.Sig, snap.SHA256)
 				}
 				_, hasReceipt = e.state.Receipt(fs.SourceID, snap.SHA256)
@@ -750,7 +753,7 @@ func (e *Engine) Report() MaintenanceReport {
 	}
 	if cfg.CleanCombatLogs {
 		rep.Notes = append(rep.Notes, fmt.Sprintf(
-			"Old combat logs are deleted: a log wowcensus.io has imported is removed once it is %d days old, while WoW is closed. The newest log in each Logs folder is always kept.",
+			"Old combat logs are deleted once wowcensus.io has imported a complete export and the log is %d days old, while WoW is closed. The newest log in each Logs folder is always kept.",
 			cfg.CleanKeepDays))
 	}
 	return rep
@@ -806,14 +809,15 @@ const receiptChecksPerScan = 5
 
 func (e *Engine) refreshReceipts(ctx context.Context, cfg Config, groups ...[]FileStatus) {
 	client := e.newClient(cfg.ServerURL, cfg.DeviceToken)
-	checks := e.state.ReceiptsToCheck(e.now(), receiptCheckEvery, receiptChecksPerScan)
+	destination := censusDestination(cfg.ServerURL, cfg.DeviceID)
+	checks := e.state.ReceiptsToCheck(e.now(), receiptCheckEvery, receiptChecksPerScan, destination)
 	updated := map[string]string{}
 	for _, c := range checks {
 		status, err := client.ReceiptStatus(ctx, c.ReceiptID)
 		if err != nil {
 			continue
 		}
-		_ = e.state.SetReceiptStatus(c.ReceiptID, status, e.now().UTC())
+		_ = e.state.setReceiptStatus(c.ReceiptID, status, e.now().UTC(), destination)
 		updated[c.ReceiptID] = status
 	}
 	if len(updated) == 0 {
@@ -822,7 +826,7 @@ func (e *Engine) refreshReceipts(ctx context.Context, cfg Config, groups ...[]Fi
 	for _, files := range groups {
 		for i := range files {
 			r := files[i].LastReceipt
-			if r == nil || updated[r.ReceiptID] == "" {
+			if r == nil || !r.pollableAt(destination) || updated[r.ReceiptID] == "" {
 				continue
 			}
 			fresh := *r

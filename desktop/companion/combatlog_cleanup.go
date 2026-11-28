@@ -1,6 +1,9 @@
 package companion
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,22 +28,36 @@ func newestCombatLogs(files []FileStatus) map[string]bool {
 	return out
 }
 
-func (e *Engine) combatLogDeletable(cfg Config, fs FileStatus, now time.Time) bool {
-	if fs.Addon != combatLogKey || !fs.Uploaded || fs.LastReceipt == nil || fs.SHA256 == "" {
-		return false
+func (e *Engine) combatLogCleanupSource(cfg Config, fs FileStatus, now time.Time) (seenFile, bool) {
+	if !cfg.CleanCombatLogs || !cfg.ShareAddons[combatLogKey] || cfg.ServerURL == "" || cfg.DeviceID == "" || cfg.DeviceToken == "" {
+		return seenFile{}, false
 	}
-	if fs.LastReceipt.Status != "imported" || fs.LastReceipt.SHA256 != fs.SHA256 {
-		return false
+	if fs.Addon != combatLogKey || !fs.Uploaded || fs.SHA256 == "" || fs.SourceID != e.state.SourceID(fs.Path) {
+		return seenFile{}, false
 	}
-	if now.Sub(fs.ModTime) < time.Duration(cfg.CleanKeepDays)*24*time.Hour {
-		return false
+	r, ok := e.state.Receipt(fs.SourceID, fs.SHA256)
+	if !ok || r.ReceiptID == "" || r.Status != "imported" || r.SourceID != fs.SourceID ||
+		r.SHA256 != fs.SHA256 || r.UploadSHA != fs.SHA256 || r.Destination != censusDestination(cfg.ServerURL, cfg.DeviceID) {
+		return seenFile{}, false
 	}
 	seen, ok := e.state.SeenSig(fs.Path)
-	if !ok || seen.SHA256 != fs.SHA256 {
-		return false
+	if !ok || seen.CombatLogSourceSHA256 == "" || seen.SHA256 != fs.SHA256 ||
+		seen.Sig.Size <= 0 || seen.Sig.Size > maxCombatLogBytes || now.Sub(seen.Sig.ModTime) < time.Duration(cfg.CleanKeepDays)*24*time.Hour {
+		return seenFile{}, false
 	}
 	sig, err := statSig(fs.Path)
-	return err == nil && sig.Equal(seen.Sig)
+	return seen, err == nil && sig.Equal(seen.Sig)
+}
+
+func combatLogSourceMatches(path string, seen seenFile) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	hash := sha256.New()
+	n, err := io.Copy(hash, io.LimitReader(f, seen.Sig.Size+1))
+	return err == nil && n == seen.Sig.Size && hex.EncodeToString(hash.Sum(nil)) == seen.CombatLogSourceSHA256
 }
 
 func (e *Engine) pruneCombatLogs(cfg Config, files []FileStatus) []FileStatus {
@@ -49,10 +66,17 @@ func (e *Engine) pruneCombatLogs(cfg Config, files []FileStatus) []FileStatus {
 	}
 	now := e.now()
 	current := newestCombatLogs(files)
-	var doomed []int
+	type candidate struct {
+		index int
+		seen  seenFile
+	}
+	var doomed []candidate
 	for i, f := range files {
-		if !current[pathKey(f.Path)] && e.combatLogDeletable(cfg, f, now) {
-			doomed = append(doomed, i)
+		if current[pathKey(f.Path)] {
+			continue
+		}
+		if seen, ok := e.combatLogCleanupSource(cfg, f, now); ok {
+			doomed = append(doomed, candidate{index: i, seen: seen})
 		}
 	}
 	if len(doomed) == 0 {
@@ -64,13 +88,22 @@ func (e *Engine) pruneCombatLogs(cfg Config, files []FileStatus) []FileStatus {
 	gone := map[int]bool{}
 	var freed int64
 	var names []string
-	for _, i := range doomed {
-		f := files[i]
+	for _, d := range doomed {
+		f := files[d.index]
+		if !combatLogSourceMatches(f.Path, d.seen) {
+			continue
+		}
+		if running, err := e.wowRunning(); err != nil || running {
+			break
+		}
+		if seen, ok := e.combatLogCleanupSource(e.Config(), f, e.now()); !ok || seen != d.seen {
+			continue
+		}
 		if err := os.Remove(f.Path); err != nil {
 			e.logf("warn", "Could not delete the old combat log %s: %v", filepath.Base(f.Path), err)
 			continue
 		}
-		gone[i] = true
+		gone[d.index] = true
 		freed += f.Bytes
 		names = append(names, f.Edition+"/"+filepath.Base(f.Path))
 	}
