@@ -277,7 +277,7 @@ func combatLayout(event string) combatEventLayout {
 	case "UNIT_DIED", "UNIT_DESTROYED":
 		return combatEventLayout{suffixes: combatDeathSuffixes}
 	case "PARTY_KILL":
-		return combatEventLayout{suffixes: combatEmptySuffix}
+		return combatEventLayout{suffixes: combatDeathSuffixes}
 	}
 	return combatEventLayout{}
 }
@@ -423,9 +423,6 @@ func filterCombatAdvanced(fields []string, suffixes []combatFields, version stri
 		return false
 	}
 	if privateUnit {
-		for i := 2; i < width; i++ {
-			fields[i] = "0"
-		}
 		fields[width-5], fields[width-4], fields[width-2] = "0.0", "0.0", "0.0"
 	}
 	return true

@@ -98,6 +98,7 @@ func TestFilterCombatLogKnownEventSchemas(t *testing.T) {
 		{"SPELL_INSTAKILL", redactionSpell + ",nil"},
 		{"UNIT_DIED UNIT_DESTROYED", "0,nil"},
 		{"PARTY_KILL", ""},
+		{"PARTY_KILL", "0"},
 	} {
 		for _, event := range strings.Fields(tc.events) {
 			t.Run(event, func(t *testing.T) {
@@ -125,7 +126,7 @@ func TestFilterCombatLogRedactsAdvancedUnitAndOwner(t *testing.T) {
 	guardianGUID := "Creature-0-1111-0-2414-417-0000AB3333"
 	ownerGUID := "Player-9002-0AA10004"
 	stats := ",100,143,12,4,77,0,0,0,-1,0,0,0,-8999.04,123.24,1429,1.2,67"
-	safeStats := ",0,0,0,0,0,0,0,0,0,0,0,0,0.0,0.0,0,0.0,0"
+	safeStats := ",100,143,12,4,77,0,0,0,-1,0,0,0,0.0,0.0,1429,0.0,67"
 	for _, tc := range []struct{ name, guid, actor, owner, safeActor, safeStats string }{
 		{"player", "Player-9001-0AA10002", redactionTarget, "0000000000000000", redactedTarget,
 			"Player-0-00000000,0000000000000000" + safeStats},
@@ -312,4 +313,16 @@ func TestCombatLogUploadBundleRedaction(t *testing.T) {
 			t.Fatalf("source log %s changed: %v", path, err)
 		}
 	}
+}
+
+func TestFilterCombatLogReportsUnsupportedVersion(t *testing.T) {
+	unknown := strings.Replace(redactionHeader, "VERSION,22,", "VERSION,23,", 1)
+	cast := combatRedactionRecord("SPELL_CAST_START", redactionSource, redactionNPC, redactionSpell)
+	out, events, err := FilterCombatLog(strings.NewReader(unknown + cast))
+	if err == nil || !strings.Contains(err.Error(), "format 23") || out != nil || events != 0 {
+		t.Fatalf("got %d bytes, %d events, %v; want an unsupported-format error", len(out), events, err)
+	}
+	safe := combatRedactionRecord("SPELL_CAST_START", redactedSource, redactionNPC, redactionSpell)
+	assertFilteredCombatLog(t, unknown+cast+redactionHeader+cast, redactionHeader+safe, 1)
+	assertFilteredCombatLog(t, strings.Replace(redactionHeader, "ENABLED,1", "ENABLED,0", 1)+cast, "", 0)
 }

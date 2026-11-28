@@ -48,7 +48,7 @@ func discoverCombatLogs(edDir, edition string) []AddonFile {
 func FilterCombatLog(r io.Reader) ([]byte, int, error) {
 	br := bufio.NewReaderSize(r, 1<<20)
 	var out bytes.Buffer
-	var version string
+	var version, unsupported string
 	events := 0
 	for readErr := error(nil); readErr == nil; {
 		var line string
@@ -71,6 +71,9 @@ func FilterCombatLog(r io.Reader) ([]byte, int, error) {
 		var fields [maxCombatFields]string
 		f := splitCombatFields(payload, fields[:0])
 		if f == nil || !combatTimestampRe.MatchString(stamp) || !filterCombatRecord(f, version) {
+			if event == "COMBAT_LOG_VERSION" && len(f) > 1 && combatUint(f[1]) && combatAdvancedWidths(f[1]) == nil {
+				unsupported = f[1]
+			}
 			continue
 		}
 		switch event {
@@ -90,6 +93,9 @@ func FilterCombatLog(r io.Reader) ([]byte, int, error) {
 		out.WriteByte('\n')
 	}
 	if events == 0 {
+		if unsupported != "" {
+			return nil, 0, fmt.Errorf("combat log format %s is not supported yet; update the companion", unsupported)
+		}
 		return nil, 0, nil
 	}
 	return out.Bytes(), events, nil
