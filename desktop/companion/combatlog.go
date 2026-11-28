@@ -46,6 +46,11 @@ func discoverCombatLogs(edDir, edition string) []AddonFile {
 }
 
 func FilterCombatLog(r io.Reader) ([]byte, int, error) {
+	return filterCombatLog(r, nil)
+}
+
+func filterCombatLog(r io.Reader, census combatCensus) ([]byte, int, error) {
+	players := newCombatPlayers(census)
 	br := bufio.NewReaderSize(r, 1<<20)
 	var out bytes.Buffer
 	var version, unsupported string
@@ -70,7 +75,10 @@ func FilterCombatLog(r io.Reader) ([]byte, int, error) {
 		stamp = strings.TrimPrefix(stamp, "\ufeff")
 		var fields [maxCombatFields]string
 		f := splitCombatFields(payload, fields[:0])
-		if f == nil || !combatTimestampRe.MatchString(stamp) || !filterCombatRecord(f, version) {
+		if f != nil && version != "" && combatTimestampRe.MatchString(stamp) {
+			players.observe(f)
+		}
+		if f == nil || !combatTimestampRe.MatchString(stamp) || !filterCombatRecord(f, version, players) {
 			if event == "COMBAT_LOG_VERSION" && len(f) > 1 && combatUint(f[1]) && combatAdvancedWidths(f[1]) == nil {
 				unsupported = f[1]
 			}
@@ -98,7 +106,7 @@ func FilterCombatLog(r io.Reader) ([]byte, int, error) {
 		}
 		return nil, 0, nil
 	}
-	return out.Bytes(), events, nil
+	return players.expand(out.Bytes()), events, nil
 }
 
 func TakeCombatLogSnapshot(f SavedVarFile, now time.Time) (*Snapshot, error) {
@@ -117,7 +125,7 @@ func TakeCombatLogSnapshot(f SavedVarFile, now time.Time) (*Snapshot, error) {
 		return nil, err
 	}
 	defer fh.Close()
-	data, _, err := FilterCombatLog(io.LimitReader(fh, before.Size))
+	data, _, err := filterCombatLog(io.LimitReader(fh, before.Size), loadCombatCensus(f.Root))
 	if err != nil {
 		return nil, err
 	}

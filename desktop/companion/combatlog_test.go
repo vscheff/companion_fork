@@ -30,7 +30,7 @@ func TestFilterCombatLogDropsPlayers(t *testing.T) {
 			t.Errorf("filtered log still contains %q:\n%s", leak, got)
 		}
 	}
-	for _, keep := range []string{"COMBAT_LOG_VERSION,22,ADVANCED_LOG_ENABLED,1", `MAP_CHANGE,1429,"Elwynn Forest"`, `"Defias Rogue Wizard"`, `"Smite"`, "UNIT_DIED", "Player-0-00000000,\"\",0x511"} {
+	for _, keep := range []string{"COMBAT_LOG_VERSION,22,ADVANCED_LOG_ENABLED,1", `MAP_CHANGE,1429,"Elwynn Forest"`, `"Defias Rogue Wizard"`, `"Smite"`, "UNIT_DIED", "Player-0-00000005,\"\",0x511"} {
 		if !strings.Contains(got, keep) {
 			t.Errorf("filtered log lost %q:\n%s", keep, got)
 		}

@@ -169,7 +169,7 @@ type combatActor struct {
 	guid     string
 }
 
-func filterCombatActor(fields []string) (combatActor, bool) {
+func filterCombatActor(fields []string, players *combatPlayers) (combatActor, bool) {
 	guid := fields[0]
 	kind, validGUID := combatGUIDKind(guid)
 	flags, validFlags := parseCombatMask(fields[2])
@@ -182,7 +182,7 @@ func filterCombatActor(fields []string) (combatActor, bool) {
 	}
 	switch {
 	case kind == "Player":
-		fields[0], fields[1] = anonymousPlayer, `""`
+		fields[0], fields[1] = players.token(guid), `""`
 	case kind == "Pet" || kind != "" && flags&combatPlayerFlags != 0:
 		fields[0], fields[1] = anonymousPet, `""`
 	case combatIdentityRe.MatchString(name):
@@ -291,7 +291,7 @@ func matchesCombatSuffix(fields []string, suffixes []combatFields) bool {
 	return false
 }
 
-func filterCombatRecord(fields []string, version string) bool {
+func filterCombatRecord(fields []string, version string, players *combatPlayers) bool {
 	event := fields[0]
 	switch event {
 	case "COMBAT_LOG_VERSION":
@@ -306,15 +306,15 @@ func filterCombatRecord(fields []string, version string) bool {
 	if len(fields) < 9 || layout.suffixes == nil && !isAbsorb {
 		return false
 	}
-	source, validSource := filterCombatActor(fields[1:5])
-	target, validTarget := filterCombatActor(fields[5:9])
+	source, validSource := filterCombatActor(fields[1:5], players)
+	target, validTarget := filterCombatActor(fields[5:9], players)
 	if !validSource || !validTarget || source.conflictsWith(target) ||
 		!strings.HasPrefix(source.guid, "Creature-") && !strings.HasPrefix(target.guid, "Creature-") {
 		return false
 	}
 	details := fields[9:]
 	if isAbsorb {
-		return filterCombatAbsorb(details, event == "SPELL_HEAL_ABSORBED", source, target)
+		return filterCombatAbsorb(details, event == "SPELL_HEAL_ABSORBED", source, target, players)
 	}
 	if layout.spell {
 		if len(details) < 3 || !combatSpell.matches(details[:3]) {
@@ -338,7 +338,7 @@ func (a combatActor) conflictsWith(b combatActor) bool {
 	return a.original == b.original && a.guid != b.guid
 }
 
-func filterCombatAbsorb(fields []string, heal bool, source, target combatActor) bool {
+func filterCombatAbsorb(fields []string, heal bool, source, target combatActor, players *combatPlayers) bool {
 	switch len(fields) {
 	case 8, 9, 10:
 		if heal {
@@ -362,7 +362,7 @@ func filterCombatAbsorb(fields []string, heal bool, source, target combatActor) 
 	if !matchesCombatSuffix(fields[7:], amounts) {
 		return false
 	}
-	caster, valid := filterCombatActor(fields[:4])
+	caster, valid := filterCombatActor(fields[:4], players)
 	return valid && !caster.conflictsWith(source) && !caster.conflictsWith(target)
 }
 
@@ -417,8 +417,8 @@ func filterCombatAdvanced(fields []string, suffixes []combatFields, version stri
 	case ownerKind != "":
 		fields[1] = noCombatActor
 	}
-	privateUnit := fields[0] == anonymousPlayer || fields[0] == anonymousPet
-	privateOwner := fields[1] == anonymousPlayer || fields[1] == anonymousPet
+	privateUnit := combatPrivateGUID(fields[0])
+	privateOwner := combatPrivateGUID(fields[1])
 	if privateOwner && !privateUnit && unit != noCombatActor && unit != "nil" {
 		return false
 	}
